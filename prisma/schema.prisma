@@ -1,0 +1,121 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model CallCenter {
+  callCenterId  String          @id @db.VarChar(36)
+  presentation  String          @db.VarChar(250)
+  botName       String          @db.VarChar(50)
+  wuid          String?         @unique @db.VarChar(150)
+  phoneNumber   String          @unique @db.VarChar(25)
+  url           String?         @db.VarChar(200)
+  companyName   String          @db.VarChar(150)
+  createAt      String          @db.VarChar(11)
+  loggedAt      String?         @db.VarChar(11)
+  updateAt      String?         @db.VarChar(11)
+  Attendant     Attendant[]
+  CompanySector CompanySector[]
+}
+
+model CompanySector {
+  sectorId     String      @id @db.VarChar(36)
+  sector       String      @db.VarChar(30)
+  CallCenter   CallCenter  @relation(fields: [callCenterId], references: [callCenterId])
+  Attendant    Attendant[]
+  callCenterId String      @db.VarChar(36)
+}
+
+model Customer {
+  customerId        String        @id @db.VarChar(36)
+  name              String?       @db.VarChar(200)
+  pushName          String        @db.VarChar(200)
+  profilePictureUrl String        @db.VarChar(500)
+  wuid              String        @unique @db.VarChar(150)
+  phoneNumber       String        @unique @db.VarChar(25)
+  otherPhones       Json?         @db.Json
+  createAt          String        @db.VarChar(11)
+  updateAt          String?       @db.VarChar(11)
+  Tansaction        Transaction[]
+}
+
+model Attendant {
+  attendantId     String          @id @db.VarChar(36)
+  shortName       String          @db.VarChar(50)
+  fullName        String?         @db.VarChar(150)
+  phoneNumber     String          @unique @db.VarChar(25)
+  wuid            String          @unique @db.VarChar(150)
+  email           String?         @unique @db.VarChar(200)
+  status          AttendantStatus @default(ACTIVE)
+  manager         Boolean         @default(false)
+  createAt        String          @db.VarChar(11)
+  updateAt        String?         @db.VarChar(11)
+  CompanySector   CompanySector   @relation(fields: [companySectorId], references: [sectorId])
+  companySectorId String          @db.VarChar(36)
+  CallCenter      CallCenter      @relation(fields: [callCenterId], references: [callCenterId])
+  callCenterId    String          @db.VarChar(36)
+  Tansaction      Transaction[]
+}
+
+enum AttendantStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model MessageWA {
+  messageId     String        @id @db.VarChar(36)
+  header        Json          @db.Json
+  body          Json          @db.Json
+  sender        Responsible
+  wuid          String        @unique @db.VarChar(150)
+  createAt      String        @db.VarChar(11)
+  status        MessageStatus @default(SENT)
+  senderAt      String        @db.VarChar(11)
+  deliveryAt    String        @db.VarChar(11)
+  readAt        String        @db.VarChar(11)
+  Tansaction    Transaction   @relation(fields: [transactionId], references: [transactionId])
+  transactionId String        @db.VarChar(36)
+}
+
+enum MessageStatus {
+  SENT
+  DELIVERY_ACK
+  READ
+}
+
+model Transaction {
+  transactionId   String            @id @db.VarChar(36)
+  subject         Json?             @db.Json
+  status          TarnsactionStatus @default(ACTIVE)
+  initiated       String            @db.VarChar(11)
+  startProcessing String?           @db.VarChar(11)
+  finished        String?           @db.VarChar(11)
+  sector          String?           @db.VarChar(30)
+  number          Int               @default(autoincrement())
+  finisher        Responsible?
+  Customer        Customer          @relation(fields: [customerId], references: [customerId])
+  customerId      String            @db.VarChar(36)
+  Attendant       Attendant?        @relation(fields: [attendantId], references: [attendantId])
+  attendantId     String?           @db.VarChar(36)
+  MessageWA       MessageWA[]
+
+  @@index([number])
+}
+
+enum TarnsactionStatus {
+  ACTIVE
+  PROCESSING
+  FINISHED
+}
+
+enum Responsible {
+  C
+  A
+}
