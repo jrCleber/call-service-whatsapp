@@ -1,6 +1,6 @@
 {
-  "name": "call-service-baileys",
-  "description": "https://github.com/jrcleber/call-service-baileys/README.md",
+  "name": "call-service",
+  "description": "https://github.com/jrcleber/call-service/README.md",
   "version": "1.0.0",
   "main": "main.js",
   "license": "MIT",
@@ -13,15 +13,25 @@
     "email": "cleber@codechat.dev"
   },
   "bugs": {
-    "url": "https://github.com/jrcleber/call-service-baileys/issues"
+    "url": "https://github.com/jrcleber/call-service/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/jrcleber/call-service-baileys.git"
+    "url": "https://github.com/jrcleber/call-service.git"
   },
   "private": false,
+  "scripts": {
+    "build": "tsc",
+    "start": "node ./dist/main.js",
+    "start:dev": "ts-node --files --transpile-only ./src/main.ts",
+    "test": "clear & tsnd --files --transpile-only --respawn --ignore-watch node_modules ./test/create.ts",
+    "prisma:migrate": "npx prisma migrate dev --name init",
+    "prisma:generate": "npx prisma generate",
+    "prisma:stuidio": "nps prisma studio"
+  },
   "dependencies": {
     "@adiwajshing/baileys": "^4.3.0",
+    "@hapi/boom": "^10.0.0",
     "@prisma/client": "^4.1.0",
     "cors": "^2.8.5",
     "dayjs": "^1.11.4",
