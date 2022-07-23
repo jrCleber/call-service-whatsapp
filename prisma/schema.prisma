@@ -25,11 +25,12 @@ model CallCenter {
 }
 
 model CompanySector {
-  sectorId     Int         @id @default(autoincrement()) @db.Int
-  sector       String      @db.VarChar(30)
-  CallCenter   CallCenter  @relation(fields: [callCenterId], references: [callCenterId])
-  callCenterId Int         @db.Int
+  sectorId     Int           @id @default(autoincrement()) @db.Int
+  sector       String        @db.VarChar(30)
+  CallCenter   CallCenter    @relation(fields: [callCenterId], references: [callCenterId])
+  callCenterId Int           @db.Int
   Attendant    Attendant[]
+  Transaction  Transaction[]
 }
 
 model Customer {
@@ -96,11 +97,14 @@ model Transaction {
   startProcessing String?           @db.VarChar(14)
   finished        String?           @db.VarChar(14)
   sector          String?           @db.VarChar(30)
+  protocol        String?           @db.VarChar(100)
   finisher        Responsible?
   Customer        Customer          @relation(fields: [customerId], references: [customerId])
   customerId      Int               @db.Int
   Attendant       Attendant?        @relation(fields: [attendantId], references: [attendantId])
   attendantId     Int?              @db.Int
+  Sector          CompanySector?    @relation(fields: [sectorId], references: [sectorId])
+  sectorId        Int?              @db.Int
   MessageWA       MessageWA[]
 }
 
@@ -115,6 +119,7 @@ model ChatStage {
 enum Stages {
   initialChat
   setName
+  checkSector
   setSubject
   transaction
   finishedChat

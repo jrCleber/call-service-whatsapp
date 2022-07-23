@@ -96,7 +96,7 @@ export class InstanceWA {
           where: { phoneNumber },
           data: { loggedAt: Date.now().toString() },
         });
-        this.logger.log(
+        this.logger.info(
           `
           ┌──────────────────────────────┐
           │    CONNECTED TO WHATSAPP     │
@@ -142,7 +142,7 @@ export class InstanceWA {
 
     this.setHandles();
 
-    this.logger.log(`\nUsing WA v${version.join('.')} - isLatest: ${isLatest}`);
+    this.logger.info(`\nUsing WA v${version.join('.')} - isLatest: ${isLatest}`);
   }
 
   private messageHandle(ev: BaileysEventEmitter) {

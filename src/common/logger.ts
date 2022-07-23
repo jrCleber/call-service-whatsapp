@@ -1,4 +1,4 @@
-import { formatDate } from './format.date';
+import { formatDate, formatDateLog } from './format.date';
 
 enum Color {
   LOG = '\x1b[32m',
@@ -7,6 +7,7 @@ enum Color {
   ERROR = '\x1b[31m',
   DEBUG = '\x1b[36m',
   VERBOSE = '\x1b[37m',
+  DARK = '\x1b[30m',
 }
 
 enum Command {
@@ -22,12 +23,14 @@ enum Level {
   DEBUG = Color.DEBUG + '%s' + Command.RESET,
   WARN = Color.WARN + '%s' + Command.RESET,
   VERBOSE = Color.VERBOSE + '%s' + Command.RESET,
+  DARK = Color.DARK + '%s' + Command.RESET,
 }
 
 enum Type {
   LOG = 'LOG',
   WARN = 'WARN',
   INFO = 'INFO',
+  DARK = 'DARK',
   ERROR = 'ERROR',
   DEBUG = 'DEBUG',
   VERBOSE = 'VERBOSE',
@@ -37,6 +40,7 @@ enum Background {
   LOG = '\x1b[42m',
   INFO = '\x1b[44m',
   WARN = '\x1b[43m',
+  DARK = '\x1b[40m',
   ERROR = '\x1b[41m',
   DEBUG = '\x1b[46m',
   VERBOSE = '\x1b[47m',
@@ -51,22 +55,27 @@ export class Logger {
   }
 
   private console(value: any, type: Type) {
+    const typeValue = typeof value;
+
     console.log(
       '\n' + Command.UNDERSCORE + Command.BRIGTH + Level[type],
       '[CodeChat]',
       Command.BRIGTH + Color[type],
       '-',
       Command.BRIGTH + Color.VERBOSE,
-      formatDate(Date.now().toString()) + Command.RESET,
+      `${formatDateLog(Date.now())}     `,
+      Command.RESET,
       Color[type] + Background[type] + Command.BRIGTH,
       `${type} ` + Command.RESET,
       Color.WARN + Command.BRIGTH,
       `[${this.context}]` + Command.RESET,
       Color[type] + Command.BRIGTH,
-      `[${typeof value}]` + Command.RESET,
-      value,
-      '\n',
+      `[${typeValue}]` + Command.RESET,
+      Color[type],
+      typeValue !== 'object' ? value : '',
+      Command.RESET,
     );
+    typeValue === 'object' ? console.log(Level.DARK, value) : '';
   }
 
   public log(value: any) {
@@ -91,5 +100,9 @@ export class Logger {
 
   public debug(value: any) {
     this.console(value, Type.DEBUG);
+  }
+
+  public dark(value: any) {
+    this.console(value, Type.DARK);
   }
 }
