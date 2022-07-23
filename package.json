@@ -3,7 +3,7 @@
   "description": "https://github.com/jrcleber/call-service/README.md",
   "version": "1.0.0",
   "main": "main.js",
-  "license": "MIT",
+  "license": "BSD 4-Clause",
   "engines": {
     "node": "^16.10.0"
   },
