@@ -11,56 +11,61 @@ datasource db {
 }
 
 model CallCenter {
-  callCenterId  String          @id @db.VarChar(36)
-  presentation  String          @db.VarChar(250)
+  callCenterId  Int             @id @default(autoincrement()) @db.Int
+  presentation  String          @db.VarChar(1000)
   botName       String          @db.VarChar(50)
   phoneNumber   String          @unique @db.VarChar(25)
   url           String?         @db.VarChar(200)
   companyName   String          @db.VarChar(150)
-  createAt      String          @db.VarChar(11)
-  loggedAt      String?         @db.VarChar(11)
-  updateAt      String?         @db.VarChar(11)
+  createAt      String          @db.VarChar(14)
+  loggedAt      String?         @db.VarChar(14)
+  updateAt      String?         @db.VarChar(14)
   Attendant     Attendant[]
   CompanySector CompanySector[]
 }
 
 model CompanySector {
-  sectorId     String      @id @db.VarChar(36)
+  sectorId     Int         @id @default(autoincrement()) @db.Int
   sector       String      @db.VarChar(30)
   CallCenter   CallCenter  @relation(fields: [callCenterId], references: [callCenterId])
+  callCenterId Int         @db.Int
   Attendant    Attendant[]
-  callCenterId String      @db.VarChar(36)
 }
 
 model Customer {
-  customerId        String        @id @db.VarChar(36)
+  customerId        Int           @id @default(autoincrement()) @db.Int
   name              String?       @db.VarChar(200)
   pushName          String        @db.VarChar(200)
   profilePictureUrl String        @db.VarChar(500)
-  wuid              String        @unique @db.VarChar(150)
-  phoneNumber       String        @unique @db.VarChar(25)
+  wuid              String        @db.VarChar(150)
+  phoneNumber       String        @db.VarChar(25)
   otherPhones       Json?         @db.Json
-  createAt          String        @db.VarChar(11)
-  updateAt          String?       @db.VarChar(11)
+  createAt          String        @db.VarChar(14)
+  updateAt          String?       @db.VarChar(14)
   Tansaction        Transaction[]
+  ChatStage         ChatStage?
+
+  // @@unique([wuid, phoneNumber])
 }
 
 model Attendant {
-  attendantId     String          @id @db.VarChar(36)
+  attendantId     Int             @id @default(autoincrement()) @db.Int
   shortName       String          @db.VarChar(50)
   fullName        String?         @db.VarChar(150)
-  phoneNumber     String          @unique @db.VarChar(25)
-  wuid            String          @unique @db.VarChar(150)
-  email           String?         @unique @db.VarChar(200)
+  phoneNumber     String          @db.VarChar(25)
+  wuid            String          @db.VarChar(150)
+  email           String?         @db.VarChar(200)
   status          AttendantStatus @default(ACTIVE)
   manager         Boolean         @default(false)
-  createAt        String          @db.VarChar(11)
-  updateAt        String?         @db.VarChar(11)
+  createAt        String          @db.VarChar(14)
+  updateAt        String?         @db.VarChar(14)
   CompanySector   CompanySector   @relation(fields: [companySectorId], references: [sectorId])
-  companySectorId String          @db.VarChar(36)
+  companySectorId Int             @db.Int
   CallCenter      CallCenter      @relation(fields: [callCenterId], references: [callCenterId])
-  callCenterId    String          @db.VarChar(36)
+  callCenterId    Int             @db.Int
   Tansaction      Transaction[]
+
+  // @@unique([wuid, email, phoneNumber])
 }
 
 enum AttendantStatus {
@@ -69,43 +74,56 @@ enum AttendantStatus {
 }
 
 model MessageWA {
-  messageId     String        @id @db.VarChar(36)
+  messageId     Int           @id @default(autoincrement()) @db.Int
   header        Json          @db.Json
   body          Json          @db.Json
   sender        Responsible
   wuid          String        @unique @db.VarChar(150)
-  createAt      String        @db.VarChar(11)
+  createAt      String        @db.VarChar(14)
   status        MessageStatus @default(SENT)
-  senderAt      String        @db.VarChar(11)
-  deliveryAt    String        @db.VarChar(11)
-  readAt        String        @db.VarChar(11)
+  senderAt      String        @db.VarChar(14)
+  deliveryAt    String        @db.VarChar(14)
+  readAt        String        @db.VarChar(14)
   Tansaction    Transaction   @relation(fields: [transactionId], references: [transactionId])
-  transactionId String        @db.VarChar(36)
+  transactionId Int           @db.Int
+}
+
+model Transaction {
+  transactionId   Int               @id @default(autoincrement()) @db.Int
+  subject         Json?             @db.Json
+  status          TarnsactionStatus @default(ACTIVE)
+  initiated       String            @db.VarChar(14)
+  startProcessing String?           @db.VarChar(14)
+  finished        String?           @db.VarChar(14)
+  sector          String?           @db.VarChar(30)
+  finisher        Responsible?
+  Customer        Customer          @relation(fields: [customerId], references: [customerId])
+  customerId      Int               @db.Int
+  Attendant       Attendant?        @relation(fields: [attendantId], references: [attendantId])
+  attendantId     Int?              @db.Int
+  MessageWA       MessageWA[]
+}
+
+model ChatStage {
+  stageId    Int       @id @default(autoincrement()) @db.Int
+  wuid       String    @unique @db.VarChar(150)
+  stage      Stages    @default(initialChat)
+  Customer   Customer? @relation(fields: [customerId], references: [customerId])
+  customerId Int?      @unique @db.Int
+}
+
+enum Stages {
+  initialChat
+  setName
+  setSubject
+  transaction
+  finishedChat
 }
 
 enum MessageStatus {
   SENT
   DELIVERY_ACK
   READ
-}
-
-model Transaction {
-  transactionId   String            @id @db.VarChar(36)
-  subject         Json?             @db.Json
-  status          TarnsactionStatus @default(ACTIVE)
-  initiated       String            @db.VarChar(11)
-  startProcessing String?           @db.VarChar(11)
-  finished        String?           @db.VarChar(11)
-  sector          String?           @db.VarChar(30)
-  number          Int               @default(autoincrement())
-  finisher        Responsible?
-  Customer        Customer          @relation(fields: [customerId], references: [customerId])
-  customerId      String            @db.VarChar(36)
-  Attendant       Attendant?        @relation(fields: [attendantId], references: [attendantId])
-  attendantId     String?           @db.VarChar(36)
-  MessageWA       MessageWA[]
-
-  @@index([number])
 }
 
 enum TarnsactionStatus {
