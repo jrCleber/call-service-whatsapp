@@ -1,10 +1,11 @@
-import { AnyMessageContent, delay, proto } from '@adiwajshing/baileys';
-import { CallCenter, Transaction } from '@prisma/client';
+import { delay, prepareWAMessageMedia, proto } from '@adiwajshing/baileys';
+import { CallCenter } from '@prisma/client';
 import dayjs from 'dayjs';
-import { timeDay } from '../common/format.date';
+import { Transaction } from '../cache/transaction.cache';
+import { formatDate, timeDay } from '../common/format.date';
 import { Logger } from '../common/logger';
+import { CacheService } from './cache.service';
 import { Instance } from './instance.service';
-import { PrismaService } from './prisma.service';
 
 type Options = { delay?: number; quoted?: proto.IWebMessageInfo };
 
@@ -23,7 +24,7 @@ enum Replace {
 
 export class ManageService {
   // eslint-disable-next-line prettier/prettier
-  constructor(private readonly prismaService: PrismaService) { }
+  constructor(private readonly cacheService: CacheService) { }
 
   private instance: Instance = {};
   private callCenter: CallCenter;
@@ -81,7 +82,7 @@ export class ManageService {
   }
 
   private async createList(tId: number, cId: number): Promise<proto.ISection[]> {
-    const sectors = await this.prismaService.companySector.findMany();
+    const sectors = await this.cacheService.sector.findMany();
     const rows: proto.IRow[] = Array.from(sectors, (sector) => {
       return {
         title: sector.sector.toUpperCase(),
@@ -109,47 +110,30 @@ export class ManageService {
   private async loadCustomer(received: proto.IWebMessageInfo) {
     const wuid = received.key.remoteJid;
 
-    let customer = await this.prismaService.customer.findFirst({
-      where: { wuid },
+    let customer = await this.cacheService.customer.find({
+      where: { wuid: received.key.remoteJid },
     });
     const profilePictureUrl = await this.profilePicture(customer.wuid);
     if (customer) {
-      this.prismaService.customer
-        .update({
-          where: { customerId: customer.customerId },
-          data: { profilePictureUrl },
-        })
-        .then()
-        .catch((error) =>
-          this.logger.error({
-            local: ManageService.name + '.loadCustomer',
-            message: `Could not update client id: ${customer.customerId}`,
-            ...error,
-          }),
-        );
+      customer.profilePictureUrl = profilePictureUrl;
+      this.cacheService.customer.update(customer);
     } else {
-      customer = await this.prismaService.customer.create({
-        data: {
-          pushName: received.pushName,
-          profilePictureUrl,
-          createAt: Date.now().toString(),
-          wuid,
-          phoneNumber: wuid.replace('@s.whatsapp.net', ''),
-        },
-      });
+      customer = {
+        pushName: received.pushName,
+        profilePictureUrl,
+        createAt: Date.now().toString(),
+        wuid,
+        phoneNumber: wuid.replace('@s.whatsapp.net', ''),
+        updateAt: undefined,
+        customerId: undefined,
+        name: undefined,
+        otherPhones: undefined,
+      };
+      this.cacheService.customer.create(customer);
       this.logger.log(`Customer: id${customer.customerId} - CREATED`);
     }
 
     return customer;
-  }
-
-  private async setSender(received: proto.IWebMessageInfo) {
-    return {
-      customer: await this.loadCustomer(received),
-      attendant: await this.prismaService.attendant.findFirst({
-        where: { wuid: received.key.remoteJid },
-      }),
-    };
   }
 
   private async initialChat(received: proto.IWebMessageInfo, id?: number) {
@@ -171,17 +155,11 @@ export class ManageService {
       { extendedTextMessage: { text: 'Digite agora o seu nome:' } },
       { delay: 1000 },
     );
-    await this.prismaService.chatStage.upsert({
-      where: { wuid },
-      create: { wuid, stage: 'setName' },
-      update: { wuid, stage: 'setName' },
-    });
+    await this.cacheService.chatStage.create({ wuid, stage: 'setName' });
 
-    return await this.prismaService.transaction.create({
-      data: {
-        initiated: Date.now().toString(),
-        customerId: id,
-      },
+    await this.cacheService.transaction.create({
+      initiated: Date.now().toString(),
+      customerId: id,
     });
   }
 
@@ -204,20 +182,16 @@ export class ManageService {
       );
     }
 
-    await this.prismaService.customer.update({
-      where: { customerId: id },
-      data: { name },
-    });
+    this.cacheService.customer.update({ customerId: id, name: name });
 
-    const transaction = await this.prismaService.transaction.findFirst({
+    const transaction = await this.cacheService.transaction.find({
       where: { customerId: id, status: 'ACTIVE' },
-      select: { transactionId: true, initiated: true, customerId: true },
     });
-    this.prismaService.transaction
-      .update({
-        where: { transactionId: transaction.transactionId },
-        data: { protocol: `${transaction.initiated}-${transaction.transactionId}` },
-      })
+    this.cacheService.transaction
+      .update(
+        { where: { transactionId: transaction.transactionId } },
+        { protocol: `${transaction.initiated}-${transaction.transactionId}` },
+      )
       .then(({ protocol }) =>
         this.sendMessage(
           wuid,
@@ -232,11 +206,8 @@ export class ManageService {
             transaction.transactionId,
             transaction.customerId,
           );
-          if (sections?.length === 0) {
-            await this.prismaService.chatStage.update({
-              where: { wuid: wuid },
-              data: { stage: 'setSubject' },
-            });
+          if (sections?.length === 1) {
+            this.cacheService.chatStage.update({ wuid }, { stage: 'setSubject' });
             this.sendMessage(
               wuid,
               {
@@ -253,10 +224,7 @@ export class ManageService {
             return;
           }
 
-          await this.prismaService.chatStage.update({
-            where: { wuid },
-            data: { stage: 'checkSector' },
-          });
+          this.cacheService.chatStage.update({ wuid }, { stage: 'checkSector' });
           this.sendMessage(
             wuid,
             {
@@ -284,9 +252,7 @@ export class ManageService {
 
   private async checkSector(received: proto.IWebMessageInfo) {
     const wuid = received.key.remoteJid;
-    const sectors = await this.prismaService.companySector.findMany({
-      where: { callCenterId: this.callCenter.callCenterId },
-    });
+    const sectors = await this.cacheService.sector.findMany();
 
     let findSector = false;
     let sectorId: number;
@@ -298,7 +264,7 @@ export class ManageService {
     if (text && sectors.find((s) => s.sector === text.toUpperCase())) {
       sectorId = sectors.find((s) => s.sector === text.toUpperCase()).sectorId;
       findSector = true;
-      transaction = await this.prismaService.transaction.findFirst({
+      transaction = await this.cacheService.transaction.find({
         where: { Customer: { wuid }, status: 'ACTIVE' },
       });
     }
@@ -311,20 +277,17 @@ export class ManageService {
         (s) => s.sectorId === Number.parseInt(selectedId.sectorId),
       ).sectorId;
       findSector = true;
-      transaction = await this.prismaService.transaction.findUnique({
+      transaction = await this.cacheService.transaction.find({
         where: { transactionId: Number.parseInt(selectedId.transaction) },
       });
     }
 
     if (findSector && transaction) {
-      await this.prismaService.chatStage.update({
-        where: { wuid: wuid },
-        data: { stage: 'setSubject' },
-      });
-      await this.prismaService.transaction.update({
-        where: { transactionId: transaction.transactionId },
-        data: { sectorId: sectorId },
-      });
+      this.cacheService.chatStage.update({ wuid }, { stage: 'setSubject' });
+      await this.cacheService.transaction.update(
+        { where: { transactionId: transaction.transactionId } },
+        { sectorId },
+      );
       this.sendMessage(
         wuid,
         {
@@ -353,17 +316,18 @@ export class ManageService {
   private async setSubject(received: proto.IWebMessageInfo, id?: number) {
     const wuid = received.key.remoteJid;
 
-    const transaction = await this.prismaService.transaction.findFirst({
+    const transaction = await this.cacheService.transaction.find({
       where: { customerId: id, status: 'ACTIVE' },
     });
 
     const text = this.selectedText(received.message).trim().toLowerCase();
     if (text !== 'fim') {
       (transaction.subject as any[]).push(received);
-      await this.prismaService.transaction.update({
-        where: { transactionId: transaction.transactionId },
-        data: { subject: transaction.subject },
-      });
+      this.cacheService.transaction.update(
+        { where: { transactionId: transaction.transactionId } },
+        { subject: transaction.subject },
+      );
+      this.manageQueue(transaction);
       return;
     }
 
@@ -376,6 +340,85 @@ export class ManageService {
       },
       { delay: 1500 },
     );
+    this.cacheService.chatStage.update({ wuid }, { stage: 'transaction' });
+  }
+
+  private async manageQueue(transaction: Transaction) {
+    const attendants = await this.cacheService.transaction.findMany(
+      { where: { sectorId: transaction.sectorId, status: { notIn: 'PROCESSING' } } },
+      { Attendant: true },
+    );
+
+    if (attendants.length > 0) {
+      const attendant = attendants[0];
+      const customer = await this.cacheService.customer.find({
+        where: { customerId: transaction.customerId },
+      });
+
+      let imageMessage: proto.IImageMessage;
+      let headerType: proto.ButtonsMessage.ButtonsMessageHeaderType;
+      let contentText: string;
+
+      if (customer.profilePictureUrl !== 'no image') {
+        try {
+          const prepareMedia = await prepareWAMessageMedia(
+            { image: { url: customer.profilePictureUrl } },
+            { upload: this.instance.client.waUploadToServer },
+          );
+          imageMessage = prepareMedia.imageMessage;
+          headerType = 4;
+
+          contentText = this.removeSpaces(`*Protocolo: ${transaction.protocol}*
+          *Clente:* ${customer.name || customer.pushName}
+          *Contato:* ${customer.phoneNumber}`);
+        } catch (error) {
+          headerType = 2;
+          contentText = this.removeSpaces(`*Clente:* ${customer.name || customer.pushName}
+          *Contato:* ${customer.phoneNumber}`);
+        }
+      }
+
+      return this.sendMessage(
+        attendant.Attendant.wuid,
+        {
+          extendedTextMessage: {
+            text: '⚠️ *ATEÇÂO* ⚠️\nNova solicitação de atendimento.',
+          },
+        },
+        { delay: 1000 },
+      ).then(() =>
+        this.sendMessage(
+          attendant.Attendant.wuid,
+          {
+            buttonsMessage: {
+              text: `*Protocolo: ${transaction.protocol}*`,
+              contentText,
+              footerText: `Início: ${formatDate(transaction.initiated)}`,
+              headerType,
+              imageMessage,
+              buttons: [
+                {
+                  buttonId: 'accept-' + transaction.transactionId.toString(),
+                  buttonText: { displayText: 'Aceitar Atendimento' },
+                  type: 1,
+                },
+                {
+                  buttonId: 'not_accept-' + transaction.transactionId.toString(),
+                  buttonText: { displayText: 'Não aceitar' },
+                  type: 1,
+                },
+              ],
+            },
+          },
+          { delay: 1500 },
+        ),
+      );
+    }
+    return;
+  }
+
+  private async transaction(received: proto.IWebMessageInfo, id?: number) {
+    //
   }
 
   public async messageManagement(received: proto.IWebMessageInfo) {
@@ -383,26 +426,37 @@ export class ManageService {
       return;
     }
 
+    await this.loadCustomer(received);
+
     if (!this.callCenter) {
-      this.callCenter = await this.prismaService.callCenter.findUnique({
-        where: { phoneNumber: this.instance.client.user.id.split(':')[0] },
-      });
+      this.callCenter = await this.cacheService.getCallCenter(
+        this.instance.client.user.id.split(':')[0],
+      );
     }
 
     // Declarando variavel que armazenaraos dados das transacoes
     let transaction: Transaction;
     // checando o remetente da mensagem
-    const sender = await this.setSender(received);
+    await this.loadCustomer(received);
+
+    const customer = await this.cacheService.customer.find({
+      where: { wuid: received.key.remoteJid },
+    });
 
     // verificando usuario e seu estagio
-    if (sender?.customer) {
-      const chatStage = await this.prismaService.chatStage.findUnique({
-        where: { wuid: sender.customer.wuid },
+    if (customer) {
+      const chatStage = await this.cacheService.chatStage.find({
+        where: { wuid: customer.wuid },
       });
       if (chatStage.stage === 'finishedChat') {
-        return await this.initialChat(received, sender.customer.customerId);
+        return await this.initialChat(received, customer.customerId);
       }
-      transaction = await this[chatStage.stage](received, sender.customer.customerId);
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      transaction = (await this[chatStage.stage](
+        received,
+        customer.customerId,
+      )) as Transaction;
     }
   }
 }

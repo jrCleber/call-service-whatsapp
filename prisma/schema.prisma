@@ -96,8 +96,7 @@ model Transaction {
   initiated       String            @db.VarChar(14)
   startProcessing String?           @db.VarChar(14)
   finished        String?           @db.VarChar(14)
-  sector          String?           @db.VarChar(30)
-  protocol        String?           @db.VarChar(100)
+  protocol        String?           @unique @db.VarChar(100)
   finisher        Responsible?
   Customer        Customer          @relation(fields: [customerId], references: [customerId])
   customerId      Int               @db.Int

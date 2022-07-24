@@ -11,8 +11,8 @@ import makeWASocket, {
   WAConnectionState,
   WASocket,
 } from '@adiwajshing/baileys';
-import { ConfigService } from './config.service';
-import { PrismaService } from './prisma.service';
+import { ConfigService } from '../services/config.service';
+import { PrismaService } from '../prisma/prisma.service';
 import EventEmitter2 from 'eventemitter2';
 import { Boom } from '@hapi/boom';
 import { join } from 'path';
