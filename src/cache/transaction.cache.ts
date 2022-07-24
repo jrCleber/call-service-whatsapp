@@ -1,7 +1,7 @@
 import { Attendant, Prisma, Responsible, TarnsactionStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-type Transaction = {
+export type Transaction = {
   transactionId?: number;
   subject?: Prisma.JsonValue | null;
   status?: TarnsactionStatus;
