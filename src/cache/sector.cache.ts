@@ -7,13 +7,11 @@ export class SectorCache {
     private readonly prismaService: PrismaService,
     private readonly cache: NodeCache,
   ) {
-    this.observer();
+    this.snapshot();
   }
 
-  /**
-   * criando um observer simples para carregar os setores a cada minuto
-   */
-  private observer() {
+  // Criando um observer simples para carregar os setores a cada minuto.
+  private snapshot() {
     setInterval(async () => {
       const sectors = await this.prismaService.companySector.findMany();
       this.cache.set(SectorCache.name, [...sectors]);
@@ -21,12 +19,13 @@ export class SectorCache {
   }
 
   public async findMany() {
-    // recuperando todos os setores do cahce
+    // Recuperando todos os setores do cahce.
     let sectors = this.cache.get<CompanySector[]>(SectorCache.name) || [];
     if (sectors.length === 0) {
       sectors = await this.prismaService.companySector.findMany();
       this.cache.set(SectorCache.name, [...sectors]);
     }
+
     return sectors;
   }
 }

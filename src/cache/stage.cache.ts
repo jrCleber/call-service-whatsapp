@@ -21,11 +21,11 @@ export class StageCache {
   private readonly logger = new Logger(StageCache.name);
 
   public async create(data: ChatStage) {
-    // verificando se já existe um estágio gerado para esse cliente
+    // Verificando se já existe um estágio gerado para esse cliente.
     let chatStage = this.cache.get<ChatStage>(data.wuid);
     if (!chatStage) {
       /**
-       * não existindo:
+       * Não existindo:
        * ├> criamos o estágio no banco de dados;
        * └> inserimos o estágio no cache.
        */
@@ -34,25 +34,25 @@ export class StageCache {
         create: { wuid: data.wuid, stage: data.stage },
         update: { stage: data.stage },
       });
-
+      // Inserinfo estágio do cliente no cache.
       this.cache.set(chatStage.wuid, chatStage.stage);
     }
-    return this.cache.get<Stages>(chatStage.wuid);
+
+    return { wuid: chatStage.wuid, stage: this.cache.get<Stages>(chatStage.wuid) };
   }
 
   public update(where: Pick<ChatStage, 'wuid'>, data: ChatStage) {
     let stage: Stages;
+    // Atualizando estágio.
     for (const [_, value] of Object.entries(data)) {
       if (value) {
         stage = value as Stages;
         break;
       }
     }
-
-    // reinserindo estágio no cache
+    // Reinserindo estágio no cache.
     this.cache.set(where.wuid, stage);
-
-    // atualizando estágio no banco de dados
+    // Atualizando estágio no banco de dados.
     this.prismaService.chatStage
       .update({
         where: { ...where },
@@ -71,19 +71,31 @@ export class StageCache {
   }
 
   public async find(where: Pick<ChatStage, 'wuid'>) {
-    let stage = this.cache.get(where.wuid);
+    // Recuperando referência do estágio na memória.
+    let stage = this.cache.get<Stages>(where.wuid);
+    // Não existindo:
     if (!stage) {
+      // buscamos esse estágio no banco.
       const chatStage = await this.prismaService.chatStage.findUnique({
         where: { wuid: where.wuid },
         select: { stage: true, wuid: true },
       });
-      this.cache.set(chatStage.wuid, chatStage.stage);
-      stage = chatStage.stage;
+      // Existindo:
+      if (chatStage) {
+        // inserimos estágio do cliente no cache se a condição for satisfeita;
+        chatStage.stage !== 'finishedChat'
+          ? this.cache.set(chatStage.wuid, chatStage.stage)
+          : undefined;
+        // Atribuimos o valor do estágio na variável.
+        stage = chatStage.stage;
+      }
     }
+
     return { wuid: where.wuid, stage };
   }
 
   public remove(where: Pick<ChatStage, 'wuid'>) {
+    // Removendo estágio do cache.
     this.cache.del(where.wuid);
   }
 }

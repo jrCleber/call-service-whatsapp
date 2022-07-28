@@ -22,59 +22,70 @@ export class AttendantCache {
     private readonly prismaService: PrismaService,
     private readonly cache: NodeCache,
   ) {
-    //
+    this.snapshot();
+  }
+
+  private attendants: Pick<Attendant, 'wuid' | 'attendantId'>[];
+
+  public getAttendants(wuid: string) {
+    return this.attendants?.find((a) => a.wuid === wuid);
+  }
+
+  private snapshot() {
+    setInterval(
+      async () =>
+        (this.attendants = await this.prismaService.attendant.findMany({
+          select: { attendantId: true, wuid: true },
+        })),
+      1000,
+    );
   }
 
   public find(where: Pick<Attendant, 'wuid' | 'attendantId'>) {
-    // recuperando a lista de atendentes no cache
-    const attendants = this.cache.get<Attendant[]>(AttendantCache.name);
-    // atribuindo atendente selecionado à uma variável
+    // Recuperando a referência da lista de atendentes no cache.
+    const attendants = this.cache.get<Attendant[]>(AttendantCache.name) || [];
+    // Atribuindo atendente selecionado à uma variável.
     const attendant = {
       ...attendants.find(
         (a) => a.wuid === where.wuid || a.attendantId === where.attendantId,
       ),
     };
-    // zerando lista
-    attendants.length = 0;
-    // retornando attendente selecionado
+
+    // Retornando attendente selecionado.
     return attendant;
   }
 
   public async set({ where }: Prisma.AttendantFindFirstArgs) {
-    // buscando atendente no banco
+    // Buscando atendente no banco.
     const attendant = await this.prismaService.attendant.findFirst({ where });
-    // buscando lista de atendentes no cache, se houver, se não, iniciamos com um array vazio
+    // Buscando lista de atendentes no cache, se houver, se não, iniciamos com um array vazio.
     const attendants = this.cache.get<Attendant[]>(AttendantCache.name) || [];
-    // recuperando o index do atendente
+    // Recuperando o index do atendente.
     const index = attendants.indexOf(attendant);
     if (!index) {
-      // inserindo atendente no array
+      // Inserindo atendente no array.
       attendants.push(attendant);
-      // reinserindo atendentes no cache
-      this.cache.set(AttendantCache.name, [...attendants]);
-      // zerando lista
-      attendants.length = 0;
-      // retornando atendente selecionado
+      // Reinserindo atendentes no cache.
+      this.cache.set(AttendantCache.name, attendants);
+      // Retornando atendente selecionado.
       return attendant;
     }
-    // se o index existir no cache, retornamos o atendente
+
     return attendant;
   }
 
   public remove(where: Attendant) {
-    // buscando o atendente a ser removido
+    // Buscando o atendente a ser removido.
     const attendant = this.find(where);
-    // buscando a lista de atendentes
+    // Buscando a lista de atendentes.
     const attendants = this.cache.get<Attendant[]>(AttendantCache.name);
-    // recuperando o index do atendente a ser removido
+    // Recuperando o index do atendente a ser removido.
     const index = attendants.indexOf(attendant);
-    // atribuindo atendente removido à uma variável e removendo atendente da lista
+    // Atribuindo atendente removido à uma variável e removendo atendente da lista.
     const attendantRemoved = { ...attendants.splice(index, 1) };
-    // reinserindo lista no cache
-    this.cache.set(AttendantCache.name, [...attendants]);
-    // zerando lista
-    attendants.length = 0;
-    // retornando o atendente removido
+    // Reinserindo lista no cache.
+    this.cache.set(AttendantCache.name, attendants);
+    // Retornando o atendente removido.
     return attendantRemoved;
   }
 }

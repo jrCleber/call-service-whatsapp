@@ -13,20 +13,20 @@ import { SectorCache } from './cache/sector.cache';
 import { TransactionCache } from './cache/transaction.cache';
 import NodeCache from 'node-cache';
 
+// Instanciando dependências.
 const eventemitter2 = new EventEmitter2(EVENT_EMITTER_CONFIG);
-
 const prismaService = new PrismaService();
-
 const configService = new ConfigService<Env>(LOADENV);
-
 const cache = new NodeCache({ checkperiod: 0 });
 
+// Instanciando caches e injeando dependências.
 const stageCache = new StageCache(prismaService, cache);
 const attendantCache = new AttendantCache(prismaService, cache);
 const customerCache = new CustomerCache(prismaService, cache);
 const sectorCache = new SectorCache(prismaService, cache);
 const transactionCache = new TransactionCache(prismaService, cache);
 
+// Instanciando serviço de chace e injetando dependências.
 const cacheService = new CacheService(
   prismaService,
   customerCache,
@@ -36,8 +36,10 @@ const cacheService = new CacheService(
   transactionCache,
 );
 
+// Instanciando gerenciado de atendimento e injetando dependência.
 const manageService = new ManageService(cacheService);
 
+// Instanciando serviço de inicialização e injetando suas dependências.
 const startupService = new StartupService(
   eventemitter2,
   prismaService,
@@ -45,4 +47,5 @@ const startupService = new StartupService(
   manageService,
 );
 
-export { startupService, prismaService, cacheService };
+// Exportando serviço de inicialização.
+export { startupService };

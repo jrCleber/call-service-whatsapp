@@ -1,9 +1,10 @@
 import { delay, prepareWAMessageMedia, proto } from '@adiwajshing/baileys';
-import { Attendant, CallCenter, Prisma } from '@prisma/client';
+import { Attendant, CallCenter } from '@prisma/client';
 import dayjs from 'dayjs';
 import { Transaction } from '../cache/transaction.cache';
 import { formatDate, timeDay } from '../common/format.date';
 import { Logger } from '../common/logger';
+import { PrismaService } from '../prisma/prisma.service';
 import { CacheService } from './cache.service';
 import { Instance } from './instance.service';
 
@@ -23,8 +24,9 @@ enum Replace {
 }
 
 export class ManageService {
-  // eslint-disable-next-line prettier/prettier
-  constructor(private readonly cacheService: CacheService) { }
+  constructor(private readonly cacheService: CacheService) {
+    //
+  }
 
   private instance: Instance = {};
   private callCenter: CallCenter;
@@ -110,14 +112,19 @@ export class ManageService {
   private async loadCustomer(received: proto.IWebMessageInfo) {
     const wuid = received.key.remoteJid;
 
-    let customer = await this.cacheService.customer.find({ wuid });
-    if (!customer) {
-      customer = await this.cacheService.customer.create({
+    const customer = await this.cacheService.customer.find({
+      field: 'wuid',
+      value: wuid,
+    });
+    if (!customer || Object.keys(customer).length === 0) {
+      const customerCreate = await this.cacheService.customer.create({
         pushName: received.pushName,
         createAt: Date.now().toString(),
-        wuid: await this.profilePicture(wuid),
+        profilePictureUrl: await this.profilePicture(wuid),
+        wuid,
         phoneNumber: wuid.replace('@s.whatsapp.net', ''),
       });
+      return customerCreate;
     }
 
     return customer;
@@ -145,7 +152,9 @@ export class ManageService {
     await this.cacheService.chatStage.create({
       wuid,
       stage: 'setName',
-      customerId: (await this.cacheService.customer.find({ wuid })).customerId,
+      customerId: (
+        await this.cacheService.customer.find({ field: 'wuid', value: wuid })
+      ).customerId,
     });
 
     await this.cacheService.transaction.create({
@@ -173,17 +182,20 @@ export class ManageService {
       );
     }
 
-    this.cacheService.customer.update({ customerId: id }, { name: name });
+    this.cacheService.customer.update({ field: 'customerId', value: id }, { name: name });
 
     const transaction = await this.cacheService.transaction.find({
-      customerId: id,
+      field: 'customerId',
+      value: id,
       status: 'ACTIVE',
     });
+    // Composto pelo timestamp, convertido para segundos, mais o id do cliente.
+    const protocol =
+      Math.trunc(Number.parseInt(transaction.initiated) / 1000).toString() +
+      '-' +
+      transaction.transactionId;
     this.cacheService.transaction
-      .update(
-        { transactionId: transaction.transactionId },
-        { protocol: `${transaction.initiated}-${transaction.transactionId}` },
-      )
+      .update({ field: 'transactionId', value: transaction.transactionId }, { protocol })
       .then(({ protocol }) =>
         this.sendMessage(
           wuid,
@@ -256,8 +268,13 @@ export class ManageService {
     if (text && sectors.find((s) => s.sector === text.toUpperCase())) {
       sectorId = sectors.find((s) => s.sector === text.toUpperCase()).sectorId;
       findSector = true;
+      // transaction = await this.cacheService.transaction.find({
+      //   Customer: { wuid },
+      //   status: 'ACTIVE',
+      // });
       transaction = await this.cacheService.transaction.find({
-        Customer: { wuid },
+        field: 'Customer',
+        value: { wuid },
         status: 'ACTIVE',
       });
     }
@@ -271,14 +288,15 @@ export class ManageService {
       ).sectorId;
       findSector = true;
       transaction = await this.cacheService.transaction.find({
-        transactionId: Number.parseInt(selectedId.transaction),
+        field: 'transactionId',
+        value: Number.parseInt(selectedId.transaction),
       });
     }
 
     if (findSector && transaction) {
       this.cacheService.chatStage.update({ wuid }, { stage: 'setSubject' });
       await this.cacheService.transaction.update(
-        { transactionId: transaction.transactionId },
+        { field: 'transactionId', value: transaction.transactionId },
         { sectorId },
       );
       this.sendMessage(
@@ -288,7 +306,7 @@ export class ManageService {
             text: `${this.removeSpaces(`Informe agora o assunto do seu atendimento.\n
             Pode ser um text, ou vídeo, ou imagem, etc.
             E quando vc terminar, envie a palavra:\n`)}
-                           *FIM*\n`,
+                            *FIM*\n`,
           },
         },
         { delay: 1000 },
@@ -310,22 +328,26 @@ export class ManageService {
     const wuid = received.key.remoteJid;
 
     const transaction = await this.cacheService.transaction.find({
-      customerId: (await this.cacheService.customer.find({ wuid })).customerId,
+      field: 'customerId',
+      value: (
+        await this.cacheService.customer.find({ field: 'wuid', value: wuid })
+      ).customerId,
       status: 'ACTIVE',
     });
 
     const text = this.selectedText(received.message).trim().toLowerCase();
     if (text !== 'fim') {
       if (!transaction?.subject) {
-        transaction.subject = [received as unknown as Prisma.JsonObject];
+        transaction.subject = JSON.stringify([received as any]);
       } else {
-        (transaction.subject as Prisma.JsonArray).push(
-          received as unknown as Prisma.JsonObject,
+        const subject: proto.IWebMessageInfo[] = JSON.parse(
+          transaction.subject as string,
         );
+        subject.push(received);
+        transaction.subject = JSON.stringify(subject);
       }
-      (transaction.subject as any[]).push(received);
       this.cacheService.transaction.update(
-        { transactionId: transaction.transactionId },
+        { field: 'transactionId', value: transaction.transactionId },
         { subject: transaction.subject },
       );
       return;
@@ -366,7 +388,8 @@ export class ManageService {
     }
 
     const customer = await this.cacheService.customer.find({
-      customerId: transaction.customerId,
+      field: 'customerId',
+      value: transaction.customerId,
     });
 
     let imageMessage: proto.IImageMessage;
@@ -401,31 +424,27 @@ export class ManageService {
       },
       { delay: 1000 },
     ).then(() =>
-      this.sendMessage(
-        releaseAttendant.wuid,
-        {
-          buttonsMessage: {
-            text: `*Protocolo: ${transaction.protocol}*`,
-            contentText,
-            footerText: `Início: ${formatDate(transaction.initiated)}`,
-            headerType,
-            imageMessage,
-            buttons: [
-              {
-                buttonId: 'accept-' + transaction.transactionId.toString(),
-                buttonText: { displayText: 'Aceitar Atendimento' },
-                type: 1,
-              },
-              {
-                buttonId: 'not_accept-' + transaction.transactionId.toString(),
-                buttonText: { displayText: 'Não aceitar' },
-                type: 1,
-              },
-            ],
-          },
+      this.sendMessage(releaseAttendant.wuid, {
+        buttonsMessage: {
+          text: `*Protocolo: ${transaction.protocol}*`,
+          contentText,
+          footerText: `Início: ${formatDate(transaction.initiated)}`,
+          headerType,
+          imageMessage,
+          buttons: [
+            {
+              buttonId: 'accept-' + transaction.transactionId.toString(),
+              buttonText: { displayText: 'Aceitar Atendimento' },
+              type: 1,
+            },
+            {
+              buttonId: 'not_accept-' + transaction.transactionId.toString(),
+              buttonText: { displayText: 'Não aceitar' },
+              type: 1,
+            },
+          ],
         },
-        { delay: 1500 },
-      ),
+      }),
     );
   }
 
@@ -438,29 +457,47 @@ export class ManageService {
       return;
     }
 
-    const customer = await this.loadCustomer(received);
+    const wuid = received.key.remoteJid;
 
+    // Carregando variável que contém as informações do call center.
     if (!this.callCenter) {
       this.callCenter = await this.cacheService.getCallCenter(
         this.instance.client.user.id.split(':')[0],
       );
     }
 
-    // Declarando variavel que armazenaraos dados das transacoes
+    // Declarando variavel que armazenaraos dados das transacoes.
     let transaction: Transaction;
 
-    // verificando usuario e seu estagio
-    if (customer) {
-      const chatStage = await this.cacheService.chatStage.find({ wuid: customer.wuid });
-      if (!chatStage?.stage || chatStage.stage === 'finishedChat') {
-        return await this.initialChat(received, customer.customerId);
+    // Verificando se o remetente da mensagem é um atendente.
+    const attendant = this.cacheService.attendant.getAttendants(wuid);
+
+    if (!attendant) {
+      // Carregando cliente
+      const customer = await this.loadCustomer(received);
+
+      // Verificando usuario e seu estagio
+      if (customer) {
+        // recuperando estágio no cache
+        const chatStage = await this.cacheService.chatStage.find({ wuid: customer.wuid });
+        /**
+         * Se a condição abaixo for satisfeita,identificamos que o cliente:
+         *  ├> não se encontra no processo de atendimento;
+         *  └> ou o, quailque atendimento, já foi finalizado.
+         * Então podemos redirecioná-lo para o stágio inicial.
+         */
+        if (!chatStage?.stage || chatStage.stage === 'finishedChat') {
+          return await this.initialChat(received, customer.customerId);
+        }
+        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+        // @ts-ignore
+        transaction = (await this[chatStage.stage](
+          received,
+          customer.customerId,
+        )) as Transaction;
       }
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      transaction = (await this[chatStage.stage](
-        received,
-        customer.customerId,
-      )) as Transaction;
+    } else {
+      this.logger.log({ attendant });
     }
   }
 }
