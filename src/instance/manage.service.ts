@@ -4,8 +4,8 @@ import dayjs from 'dayjs';
 import { Transaction } from '../cache/transaction.cache';
 import { formatDate, timeDay } from '../common/format.date';
 import { Logger } from '../common/logger';
-import { PrismaService } from '../prisma/prisma.service';
-import { CacheService } from './cache.service';
+import { CacheService } from '../services/cache.service';
+import { Commands } from './command/commands';
 import { Instance } from './instance.service';
 
 type Options = { delay?: number; quoted?: proto.IWebMessageInfo };
@@ -24,7 +24,10 @@ enum Replace {
 }
 
 export class ManageService {
-  constructor(private readonly cacheService: CacheService) {
+  constructor(
+    private readonly cacheService: CacheService,
+    private readonly commands: Commands,
+  ) {
     //
   }
 
@@ -66,7 +69,7 @@ export class ManageService {
   private selectedText(message: proto.IMessage) {
     if (message?.conversation) return message.conversation;
     if (message?.extendedTextMessage) return message.extendedTextMessage.text;
-    return '';
+    return;
   }
 
   private selectedIdMsg(message: proto.IMessage) {
@@ -152,9 +155,7 @@ export class ManageService {
     await this.cacheService.chatStage.create({
       wuid,
       stage: 'setName',
-      customerId: (
-        await this.cacheService.customer.find({ field: 'wuid', value: wuid })
-      ).customerId,
+      customerId: id,
     });
 
     await this.cacheService.transaction.create({
@@ -359,7 +360,8 @@ export class ManageService {
       wuid,
       {
         extendedTextMessage: {
-          text: 'Ótimo! Aguarde um momento!\nLogo você será atendido pela nossa equipe.',
+          text: `Ótimo! Aguarde um momento!\nLogo você será atendido pela nossa equipe.\n
+          Para cancelar o atendimento, a qualquer momento, digit: *-1*`,
         },
       },
       { delay: 1500 },
@@ -448,8 +450,140 @@ export class ManageService {
     );
   }
 
+  // O principal objetivo desta função é transacionar asmensagens do cliente para o atendente
   private async transaction(received: proto.IWebMessageInfo, id?: number) {
-    //
+    const wuid = received.key.remoteJid;
+
+    // Recuperando transação
+    const transaction = await this.cacheService.transaction.find({
+      field: 'customerId',
+      value: id,
+    });
+
+    // declarando variável que armazenará os dados do atendente.
+    let attendant: Attendant;
+
+    // Selecionando o texto das mensagens de texto.
+    const selectedText = this.selectedText(received.message);
+    // Verificando se o cliente deseja cancelar o atendimeto.
+    if (selectedText === '-1' || selectedText === '*-1*') {
+      // Cancelando o atendimento.
+      this.cacheService.transaction.update(
+        { field: 'transactionId', value: transaction.transactionId },
+        { finished: Date.now().toString(), finisher: 'C', status: 'FINISHED' },
+      );
+      // Enviando mensagem para o cliente que o seu atendimento foi finalizado,.
+      this.sendMessage(
+        wuid,
+        {
+          extendedTextMessage: {
+            text: 'Tudo certo!\nO seu atendimento foi finalizado com sucesso.',
+          },
+        },
+        { delay: 1500 },
+      );
+      // Verificando se existe um atendente vinculado a esse atendimento.
+      if (transaction?.attendantId) {
+        attendant = this.cacheService.attendant.find({
+          field: 'attendantId',
+          value: transaction.attendantId,
+        });
+        this.sendMessage(attendant.wuid, {
+          extendedTextMessage: {
+            text: `*Protocolo: ${transaction.protocol}*
+            *Situação:* cancelado pelo cliente;
+            *Status:* ${transaction.status}
+            *Data/Hora:* ${formatDate(Date.now().toString())}`,
+          },
+        });
+        // Deletando atendente do cache.
+        this.cacheService.attendant.remove({
+          field: 'attendantId',
+          value: attendant.attendantId,
+        });
+      }
+      // Deletando informações do cache.
+      this.cacheService.chatStage.remove({ wuid });
+      this.cacheService.customer.remove({
+        field: 'customerId',
+        value: transaction.customerId,
+      });
+      this.cacheService.transaction.remove({
+        field: 'transactionId',
+        value: transaction.transactionId,
+      });
+
+      return;
+    }
+
+    // Caso o cliente não esteja vinculado a um atendente
+    if (!transaction?.attendantId) {
+      this.sendMessage(
+        wuid,
+        {
+          extendedTextMessage: {
+            text: `Aguarde um momento!\nLogo você será atendido pela nossa equipe.\n
+            Para cancelar o atendimento, a qualquer momento, digit: *-1*`,
+          },
+        },
+        { delay: 1500 },
+      );
+      return;
+    }
+
+    // Encaminhando mensagem para o atendente.
+    this.sendMessage(attendant.wuid, received.message, { delay: 1500 });
+
+    return transaction;
+  }
+
+  // Esta função transacionará as mensagens do atendente para o cliente
+  private async transactionAttendant(received: proto.IWebMessageInfo) {
+    const wuid = received.key.remoteJid;
+
+    // Verificando se o attendente inseriu um comando válido.
+    const textCommand = this.selectedText(received.message) as keyof Commands;
+    const command = this.commands[textCommand];
+    if (command) {
+      command();
+      return;
+    }
+
+    // Buscando dados do atendente.
+    const attendant = this.cacheService.attendant.find({
+      field: 'wuid',
+      value: wuid,
+    });
+
+    // Verificando se este atendente está vinculado a uma transação.
+    const transaction = await this.cacheService.transaction.find({
+      field: 'attendantId',
+      value: attendant?.attendantId,
+    });
+
+    if (!transaction) {
+      this.sendMessage(
+        wuid,
+        {
+          extendedTextMessage: {
+            text: 'No momento, você não está em nem um atendimento; aguarde até ser vinculado a um.',
+          },
+        },
+        { delay: 1500 },
+      );
+      return;
+    }
+
+    // Buscando dados do usuário.
+    const customer = await this.cacheService.customer.find({
+      field: 'customerId',
+      value: transaction?.customerId,
+    });
+    // Encaminhado mensagen do atendente ao cliente.
+    if (customer) {
+      this.sendMessage(customer.wuid, received.message, { delay: 1500 });
+      return transaction;
+    }
   }
 
   public async messageManagement(received: proto.IWebMessageInfo) {
@@ -497,7 +631,7 @@ export class ManageService {
         )) as Transaction;
       }
     } else {
-      this.logger.log({ attendant });
+      transaction = await this.transactionAttendant(received);
     }
   }
 }

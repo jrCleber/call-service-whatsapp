@@ -1,17 +1,18 @@
 import EventEmitter2 from 'eventemitter2';
 import { Env, LOADENV } from './common/yaml.load';
 import { EVENT_EMITTER_CONFIG } from './config/event.config';
-import { StartupService } from './instance/startup.service';
+import { StartupService } from './services/startup.service';
 import { ConfigService } from './services/config.service';
 import { PrismaService } from './prisma/prisma.service';
 import { ManageService } from './instance/manage.service';
-import { CacheService } from './instance/cache.service';
+import { CacheService } from './services/cache.service';
 import { StageCache } from './cache/stage.cache';
 import { AttendantCache } from './cache/attendant.cache';
 import { CustomerCache } from './cache/customer.cache';
 import { SectorCache } from './cache/sector.cache';
 import { TransactionCache } from './cache/transaction.cache';
 import NodeCache from 'node-cache';
+import { Commands } from './instance/command/commands';
 
 // Instanciando dependências.
 const eventemitter2 = new EventEmitter2(EVENT_EMITTER_CONFIG);
@@ -36,8 +37,11 @@ const cacheService = new CacheService(
   transactionCache,
 );
 
+// Instanciando dependência Comando.
+const commands = new Commands(prismaService, cacheService);
+
 // Instanciando gerenciado de atendimento e injetando dependência.
-const manageService = new ManageService(cacheService);
+const manageService = new ManageService(cacheService, commands);
 
 // Instanciando serviço de inicialização e injetando suas dependências.
 const startupService = new StartupService(

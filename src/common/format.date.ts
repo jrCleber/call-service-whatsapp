@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 
 export const formatDate = (timestamp: string) =>
-  dayjs(Number.parseInt(timestamp)).format('YYYY-MM-DD HH:mm:ss');
+  dayjs(Number.parseInt(timestamp)).format('DD/MM/YYYY HH:mm:ss');
 
 export const formatDateLog = (timestamp: number) =>
   dayjs(timestamp)

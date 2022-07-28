@@ -17,6 +17,11 @@ export type Attendant = {
   callCenterId: number;
 };
 
+type Query = {
+  field: keyof Attendant;
+  value: number | string | AttendantStatus;
+};
+
 export class AttendantCache {
   constructor(
     private readonly prismaService: PrismaService,
@@ -41,15 +46,11 @@ export class AttendantCache {
     );
   }
 
-  public find(where: Pick<Attendant, 'wuid' | 'attendantId'>) {
+  public find(where: Query) {
     // Recuperando a referência da lista de atendentes no cache.
     const attendants = this.cache.get<Attendant[]>(AttendantCache.name) || [];
     // Atribuindo atendente selecionado à uma variável.
-    const attendant = {
-      ...attendants.find(
-        (a) => a.wuid === where.wuid || a.attendantId === where.attendantId,
-      ),
-    };
+    const attendant = attendants.find((a) => a[where.field] === where.value);
 
     // Retornando attendente selecionado.
     return attendant;
@@ -74,9 +75,9 @@ export class AttendantCache {
     return attendant;
   }
 
-  public remove(where: Attendant) {
+  public remove(del: Query) {
     // Buscando o atendente a ser removido.
-    const attendant = this.find(where);
+    const attendant = this.find({ field: del.field, value: del.value });
     // Buscando a lista de atendentes.
     const attendants = this.cache.get<Attendant[]>(AttendantCache.name);
     // Recuperando o index do atendente a ser removido.

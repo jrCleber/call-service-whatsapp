@@ -1,12 +1,12 @@
 import EventEmitter2 from 'eventemitter2';
-import { InstanceWA } from './instance.service';
+import { InstanceWA } from '../instance/instance.service';
 import { rmSync } from 'fs';
 import { join } from 'path';
 import { BaileysEventEmitter, DisconnectReason } from '@adiwajshing/baileys';
 import { Boom } from '@hapi/boom';
 import { PrismaService } from '../prisma/prisma.service';
-import { ConfigService } from '../services/config.service';
-import { ManageService } from './manage.service';
+import { ConfigService } from './config.service';
+import { ManageService } from '../instance/manage.service';
 import { Env } from '../common/yaml.load';
 import { INSTANCE_DIR } from '../config/path.config';
 import { Logger } from '../common/logger';
