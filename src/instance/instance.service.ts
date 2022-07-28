@@ -21,7 +21,7 @@ import P from 'pino';
 import { ManageService } from './manage.service';
 import { Browser, QrCode } from '../common/yaml.load';
 import { messageProcessing } from '../common/message.filter';
-import { ROOT_DIR } from '../config/path.config';
+import { INSTANCE_DIR } from '../config/path.config';
 import { Logger } from '../common/logger';
 
 export type Instance = {
@@ -115,7 +115,7 @@ export class InstanceWA {
 
     // Iniciando a authenticação e conexão com o whatsapp
     this.instance.authState = await useMultiFileAuthState(
-      join(ROOT_DIR, this.instance.instanceKey),
+      join(INSTANCE_DIR, this.instance.instanceKey),
     );
 
     const { version, isLatest } = await fetchLatestBaileysVersion();
@@ -142,7 +142,7 @@ export class InstanceWA {
 
     this.setHandles();
 
-    this.logger.info(`\nUsing WA v${version.join('.')} - isLatest: ${isLatest}`);
+    this.logger.info(`Using WA v${version.join('.')} - isLatest: ${isLatest}`);
   }
 
   private messageHandle(ev: BaileysEventEmitter) {
@@ -162,7 +162,10 @@ export class InstanceWA {
       }
 
       // mostrando mensagem recebida no console
-      this.logger.log({ type, messgage: received });
+      this.logger.log({ type, messgage: { ...received } });
+
+      // setanso cliente em manageService
+      this.manageService.client = this.instance;
 
       // iniciando o precessador de mensagens
       messageProcessing(

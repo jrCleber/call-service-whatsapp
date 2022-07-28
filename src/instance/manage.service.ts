@@ -1,5 +1,5 @@
 import { delay, prepareWAMessageMedia, proto } from '@adiwajshing/baileys';
-import { CallCenter } from '@prisma/client';
+import { Attendant, CallCenter, Prisma } from '@prisma/client';
 import dayjs from 'dayjs';
 import { Transaction } from '../cache/transaction.cache';
 import { formatDate, timeDay } from '../common/format.date';
@@ -110,27 +110,14 @@ export class ManageService {
   private async loadCustomer(received: proto.IWebMessageInfo) {
     const wuid = received.key.remoteJid;
 
-    let customer = await this.cacheService.customer.find({
-      where: { wuid: received.key.remoteJid },
-    });
-    const profilePictureUrl = await this.profilePicture(customer.wuid);
-    if (customer) {
-      customer.profilePictureUrl = profilePictureUrl;
-      this.cacheService.customer.update(customer);
-    } else {
-      customer = {
+    let customer = await this.cacheService.customer.find({ wuid });
+    if (!customer) {
+      customer = await this.cacheService.customer.create({
         pushName: received.pushName,
-        profilePictureUrl,
         createAt: Date.now().toString(),
-        wuid,
+        wuid: await this.profilePicture(wuid),
         phoneNumber: wuid.replace('@s.whatsapp.net', ''),
-        updateAt: undefined,
-        customerId: undefined,
-        name: undefined,
-        otherPhones: undefined,
-      };
-      this.cacheService.customer.create(customer);
-      this.logger.log(`Customer: id${customer.customerId} - CREATED`);
+      });
     }
 
     return customer;
@@ -144,7 +131,7 @@ export class ManageService {
       {
         extendedTextMessage: {
           text: this.callCenter.presentation
-            .replace(Replace.BOTNAME, this.callCenter.botName)
+            .replace(Replace.BOTNAME, `*${this.callCenter.botName}*`)
             .replace(Replace.DAY, timeDay(dayjs().hour())),
         },
       },
@@ -155,7 +142,11 @@ export class ManageService {
       { extendedTextMessage: { text: 'Digite agora o seu nome:' } },
       { delay: 1000 },
     );
-    await this.cacheService.chatStage.create({ wuid, stage: 'setName' });
+    await this.cacheService.chatStage.create({
+      wuid,
+      stage: 'setName',
+      customerId: (await this.cacheService.customer.find({ wuid })).customerId,
+    });
 
     await this.cacheService.transaction.create({
       initiated: Date.now().toString(),
@@ -168,7 +159,7 @@ export class ManageService {
 
     const name = this.selectedText(received.message);
 
-    if (name === '') {
+    if (name === '' || Number.parseFloat(name)) {
       this.sendMessage(
         wuid,
         {
@@ -182,14 +173,15 @@ export class ManageService {
       );
     }
 
-    this.cacheService.customer.update({ customerId: id, name: name });
+    this.cacheService.customer.update({ customerId: id }, { name: name });
 
     const transaction = await this.cacheService.transaction.find({
-      where: { customerId: id, status: 'ACTIVE' },
+      customerId: id,
+      status: 'ACTIVE',
     });
     this.cacheService.transaction
       .update(
-        { where: { transactionId: transaction.transactionId } },
+        { transactionId: transaction.transactionId },
         { protocol: `${transaction.initiated}-${transaction.transactionId}` },
       )
       .then(({ protocol }) =>
@@ -243,7 +235,7 @@ export class ManageService {
       )
       .catch((error) =>
         this.logger.error({
-          local: ManageService.name + '.loadCustomer',
+          local: ManageService.name + '.' + ManageService.prototype.setName.name,
           message: `Could not update transaction id: ${transaction.transactionId}`,
           ...error,
         }),
@@ -265,7 +257,8 @@ export class ManageService {
       sectorId = sectors.find((s) => s.sector === text.toUpperCase()).sectorId;
       findSector = true;
       transaction = await this.cacheService.transaction.find({
-        where: { Customer: { wuid }, status: 'ACTIVE' },
+        Customer: { wuid },
+        status: 'ACTIVE',
       });
     }
 
@@ -278,14 +271,14 @@ export class ManageService {
       ).sectorId;
       findSector = true;
       transaction = await this.cacheService.transaction.find({
-        where: { transactionId: Number.parseInt(selectedId.transaction) },
+        transactionId: Number.parseInt(selectedId.transaction),
       });
     }
 
     if (findSector && transaction) {
       this.cacheService.chatStage.update({ wuid }, { stage: 'setSubject' });
       await this.cacheService.transaction.update(
-        { where: { transactionId: transaction.transactionId } },
+        { transactionId: transaction.transactionId },
         { sectorId },
       );
       this.sendMessage(
@@ -295,7 +288,7 @@ export class ManageService {
             text: `${this.removeSpaces(`Informe agora o assunto do seu atendimento.\n
             Pode ser um text, ou vídeo, ou imagem, etc.
             E quando vc terminar, envie a palavra:\n`)}
-            *FIM*\n`,
+                           *FIM*\n`,
           },
         },
         { delay: 1000 },
@@ -313,23 +306,32 @@ export class ManageService {
     }
   }
 
-  private async setSubject(received: proto.IWebMessageInfo, id?: number) {
+  private async setSubject(received: proto.IWebMessageInfo) {
     const wuid = received.key.remoteJid;
 
     const transaction = await this.cacheService.transaction.find({
-      where: { customerId: id, status: 'ACTIVE' },
+      customerId: (await this.cacheService.customer.find({ wuid })).customerId,
+      status: 'ACTIVE',
     });
 
     const text = this.selectedText(received.message).trim().toLowerCase();
     if (text !== 'fim') {
+      if (!transaction?.subject) {
+        transaction.subject = [received as unknown as Prisma.JsonObject];
+      } else {
+        (transaction.subject as Prisma.JsonArray).push(
+          received as unknown as Prisma.JsonObject,
+        );
+      }
       (transaction.subject as any[]).push(received);
       this.cacheService.transaction.update(
-        { where: { transactionId: transaction.transactionId } },
+        { transactionId: transaction.transactionId },
         { subject: transaction.subject },
       );
-      this.manageQueue(transaction);
       return;
     }
+
+    this.manageQueue(transaction);
 
     this.sendMessage(
       wuid,
@@ -344,77 +346,87 @@ export class ManageService {
   }
 
   private async manageQueue(transaction: Transaction) {
-    const attendants = await this.cacheService.transaction.findMany(
-      { where: { sectorId: transaction.sectorId, status: { notIn: 'PROCESSING' } } },
-      { Attendant: true },
-    );
+    const transactions = await this.cacheService.transaction.findMany({
+      where: { sectorId: transaction.sectorId, status: { notIn: 'PROCESSING' } },
+    });
 
-    if (attendants.length > 0) {
-      const attendant = attendants[0];
-      const customer = await this.cacheService.customer.find({
-        where: { customerId: transaction.customerId },
+    let releaseAttendant: Attendant;
+
+    if (!transactions.find((t) => t.attendantId)) {
+      releaseAttendant = await this.cacheService.attendant.set({
+        where: { companySectorId: transaction.sectorId },
       });
+    } else {
+      releaseAttendant = await this.cacheService.attendant.set({
+        where: {
+          attendantId: { notIn: [...new Set(transactions.map((t) => t.attendantId))] },
+          companySectorId: transaction.sectorId,
+        },
+      });
+    }
 
-      let imageMessage: proto.IImageMessage;
-      let headerType: proto.ButtonsMessage.ButtonsMessageHeaderType;
-      let contentText: string;
+    const customer = await this.cacheService.customer.find({
+      customerId: transaction.customerId,
+    });
 
-      if (customer.profilePictureUrl !== 'no image') {
-        try {
-          const prepareMedia = await prepareWAMessageMedia(
-            { image: { url: customer.profilePictureUrl } },
-            { upload: this.instance.client.waUploadToServer },
-          );
-          imageMessage = prepareMedia.imageMessage;
-          headerType = 4;
+    let imageMessage: proto.IImageMessage;
+    let contentText: string;
+    let headerType: number;
 
-          contentText = this.removeSpaces(`*Protocolo: ${transaction.protocol}*
+    if (customer.profilePictureUrl !== 'no image') {
+      try {
+        const prepareMedia = await prepareWAMessageMedia(
+          { image: { url: customer.profilePictureUrl } },
+          { upload: this.instance.client.waUploadToServer },
+        );
+        imageMessage = prepareMedia.imageMessage;
+        headerType = 4;
+
+        contentText = this.removeSpaces(`*Protocolo: ${transaction.protocol}*
           *Clente:* ${customer.name || customer.pushName}
           *Contato:* ${customer.phoneNumber}`);
-        } catch (error) {
-          headerType = 2;
-          contentText = this.removeSpaces(`*Clente:* ${customer.name || customer.pushName}
+      } catch (error) {
+        headerType = 2;
+        contentText = this.removeSpaces(`*Clente:* ${customer.name || customer.pushName}
           *Contato:* ${customer.phoneNumber}`);
-        }
       }
+    }
 
-      return this.sendMessage(
-        attendant.Attendant.wuid,
+    return this.sendMessage(
+      releaseAttendant.wuid,
+      {
+        extendedTextMessage: {
+          text: '⚠️ *ATEÇÂO* ⚠️\nNova solicitação de atendimento.',
+        },
+      },
+      { delay: 1000 },
+    ).then(() =>
+      this.sendMessage(
+        releaseAttendant.wuid,
         {
-          extendedTextMessage: {
-            text: '⚠️ *ATEÇÂO* ⚠️\nNova solicitação de atendimento.',
+          buttonsMessage: {
+            text: `*Protocolo: ${transaction.protocol}*`,
+            contentText,
+            footerText: `Início: ${formatDate(transaction.initiated)}`,
+            headerType,
+            imageMessage,
+            buttons: [
+              {
+                buttonId: 'accept-' + transaction.transactionId.toString(),
+                buttonText: { displayText: 'Aceitar Atendimento' },
+                type: 1,
+              },
+              {
+                buttonId: 'not_accept-' + transaction.transactionId.toString(),
+                buttonText: { displayText: 'Não aceitar' },
+                type: 1,
+              },
+            ],
           },
         },
-        { delay: 1000 },
-      ).then(() =>
-        this.sendMessage(
-          attendant.Attendant.wuid,
-          {
-            buttonsMessage: {
-              text: `*Protocolo: ${transaction.protocol}*`,
-              contentText,
-              footerText: `Início: ${formatDate(transaction.initiated)}`,
-              headerType,
-              imageMessage,
-              buttons: [
-                {
-                  buttonId: 'accept-' + transaction.transactionId.toString(),
-                  buttonText: { displayText: 'Aceitar Atendimento' },
-                  type: 1,
-                },
-                {
-                  buttonId: 'not_accept-' + transaction.transactionId.toString(),
-                  buttonText: { displayText: 'Não aceitar' },
-                  type: 1,
-                },
-              ],
-            },
-          },
-          { delay: 1500 },
-        ),
-      );
-    }
-    return;
+        { delay: 1500 },
+      ),
+    );
   }
 
   private async transaction(received: proto.IWebMessageInfo, id?: number) {
@@ -426,7 +438,7 @@ export class ManageService {
       return;
     }
 
-    await this.loadCustomer(received);
+    const customer = await this.loadCustomer(received);
 
     if (!this.callCenter) {
       this.callCenter = await this.cacheService.getCallCenter(
@@ -436,19 +448,11 @@ export class ManageService {
 
     // Declarando variavel que armazenaraos dados das transacoes
     let transaction: Transaction;
-    // checando o remetente da mensagem
-    await this.loadCustomer(received);
-
-    const customer = await this.cacheService.customer.find({
-      where: { wuid: received.key.remoteJid },
-    });
 
     // verificando usuario e seu estagio
     if (customer) {
-      const chatStage = await this.cacheService.chatStage.find({
-        where: { wuid: customer.wuid },
-      });
-      if (chatStage.stage === 'finishedChat') {
+      const chatStage = await this.cacheService.chatStage.find({ wuid: customer.wuid });
+      if (!chatStage?.stage || chatStage.stage === 'finishedChat') {
         return await this.initialChat(received, customer.customerId);
       }
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment

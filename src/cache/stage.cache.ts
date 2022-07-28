@@ -1,4 +1,5 @@
-import { Prisma, Stages } from '@prisma/client';
+import { Stages } from '@prisma/client';
+import NodeCache from 'node-cache';
 import { Logger } from '../common/logger';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -10,44 +11,48 @@ type ChatStage = {
 };
 
 export class StageCache {
-  // eslint-disable-next-line prettier/prettier
-  constructor(private readonly prismaService: PrismaService) { }
-
-  private readonly logger = new Logger(StageCache.name);
-  private readonly chatStages: Record<string, ChatStage> = {};
-
-  public async create(data: ChatStage) {
-    if (!this.chatStages[data.wuid]) {
-      this.chatStages[data.wuid] = await this.prismaService.chatStage.create({
-        data: { wuid: data.wuid, stage: data.stage },
-      });
-    }
-    this.prismaService.chatStage
-      .update({
-        where: { wuid: data.wuid },
-        data: { stage: data.stage },
-      })
-      .then()
-      .catch((error) =>
-        this.logger.error({
-          local: StageCache.name + '.create',
-          message: `Could not update client id: ${data.customerId}`,
-          ...error,
-        }),
-      );
-    this.chatStages[data.wuid].stage = data.stage;
-    return this.chatStages[data.wuid];
+  constructor(
+    private readonly prismaService: PrismaService,
+    private readonly cache: NodeCache,
+  ) {
+    //
   }
 
-  public update(where: Prisma.ChatStageWhereUniqueInput, data: ChatStage) {
-    for (const [key, value] of Object.entries(data)) {
+  private readonly logger = new Logger(StageCache.name);
+
+  public async create(data: ChatStage) {
+    // verificando se já existe um estágio gerado para esse cliente
+    let chatStage = this.cache.get<ChatStage>(data.wuid);
+    if (!chatStage) {
+      /**
+       * não existindo:
+       * ├> criamos o estágio no banco de dados;
+       * └> inserimos o estágio no cache.
+       */
+      chatStage = await this.prismaService.chatStage.upsert({
+        where: { wuid: data.wuid },
+        create: { wuid: data.wuid, stage: data.stage },
+        update: { stage: data.stage },
+      });
+
+      this.cache.set(chatStage.wuid, chatStage.stage);
+    }
+    return this.cache.get<Stages>(chatStage.wuid);
+  }
+
+  public update(where: Pick<ChatStage, 'wuid'>, data: ChatStage) {
+    let stage: Stages;
+    for (const [_, value] of Object.entries(data)) {
       if (value) {
-        // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-        // @ts-ignore
-        this.chatStages[customer.wuid][key] = value;
+        stage = value as Stages;
+        break;
       }
     }
 
+    // reinserindo estágio no cache
+    this.cache.set(where.wuid, stage);
+
+    // atualizando estágio no banco de dados
     this.prismaService.chatStage
       .update({
         where: { ...where },
@@ -56,25 +61,29 @@ export class StageCache {
       .then()
       .catch((error) =>
         this.logger.error({
-          local: StageCache.name + '.loadCustomer',
-          message: `Could not update client id: ${data.customerId}`,
+          local: StageCache.name + '.' + StageCache.prototype.update.name,
+          message: `Could not update chatStage - wuid: ${where.wuid}`,
           ...error,
         }),
       );
 
-    return this.chatStages[data.wuid];
+    return { wuid: where.wuid, stage: this.cache.get(where.wuid) };
   }
 
-  public async find({ where }: Prisma.ChatStageFindFirstArgs) {
-    if (!this.chatStages[where.wuid as string]) {
-      this.chatStages[where as string] = await this.prismaService.chatStage.findUnique({
-        where: { wuid: where.wuid as string },
+  public async find(where: Pick<ChatStage, 'wuid'>) {
+    let stage = this.cache.get(where.wuid);
+    if (!stage) {
+      const chatStage = await this.prismaService.chatStage.findUnique({
+        where: { wuid: where.wuid },
+        select: { stage: true, wuid: true },
       });
+      this.cache.set(chatStage.wuid, chatStage.stage);
+      stage = chatStage.stage;
     }
-    return this.chatStages[where.wuid as string];
+    return { wuid: where.wuid, stage };
   }
 
-  public remove(data: ChatStage) {
-    delete this.chatStages[data.wuid];
+  public remove(where: Pick<ChatStage, 'wuid'>) {
+    this.cache.del(where.wuid);
   }
 }

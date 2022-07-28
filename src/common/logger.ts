@@ -75,7 +75,7 @@ export class Logger {
       typeValue !== 'object' ? value : '',
       Command.RESET,
     );
-    typeValue === 'object' ? console.log(Level.DARK, value) : '';
+    typeValue === 'object' ? console.log(/*Level.DARK,*/ value, '\n') : '';
   }
 
   public log(value: any) {

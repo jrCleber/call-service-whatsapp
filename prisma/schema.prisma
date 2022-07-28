@@ -37,7 +37,7 @@ model Customer {
   customerId        Int           @id @default(autoincrement()) @db.Int
   name              String?       @db.VarChar(200)
   pushName          String        @db.VarChar(200)
-  profilePictureUrl String        @db.VarChar(500)
+  profilePictureUrl String?       @db.VarChar(500)
   wuid              String        @db.VarChar(150)
   phoneNumber       String        @db.VarChar(25)
   otherPhones       Json?         @db.Json
