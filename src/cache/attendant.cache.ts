@@ -32,7 +32,7 @@ export class AttendantCache {
 
   private attendants: Pick<Attendant, 'wuid' | 'attendantId'>[];
 
-  public getAttendants(wuid: string) {
+  public getAttendant(wuid: string) {
     return this.attendants?.find((a) => a.wuid === wuid);
   }
 

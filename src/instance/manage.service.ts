@@ -60,9 +60,7 @@ export class ManageService {
           message,
         },
       },
-      {
-        quoted: options?.quoted,
-      },
+      { quoted: options?.quoted },
     );
   }
 
@@ -95,13 +93,7 @@ export class ManageService {
         rowId: `${cId}-${tId}-${sector.callCenterId}-${sector.sectorId}`,
       };
     });
-    return [
-      { title: 'SETORES', rows },
-      {
-        title: 'OUTRAS OPÇÕES',
-        rows: [{ title: 'Nem uma das alternativas acima', description: ' ', rowId: '0' }],
-      },
-    ];
+    return [{ title: 'SETORES', rows }];
   }
 
   private async profilePicture(wuid: string) {
@@ -114,12 +106,14 @@ export class ManageService {
 
   private async loadCustomer(received: proto.IWebMessageInfo) {
     const wuid = received.key.remoteJid;
-
+    // Realizando uma busca no cache e no db para retornar o cliente solicitado.
     const customer = await this.cacheService.customer.find({
       field: 'wuid',
       value: wuid,
     });
+    // Não existindo:
     if (!customer || Object.keys(customer).length === 0) {
+      // criamos um cliente
       const customerCreate = await this.cacheService.customer.create({
         pushName: received.pushName,
         createAt: Date.now().toString(),
@@ -127,6 +121,7 @@ export class ManageService {
         wuid,
         phoneNumber: wuid.replace('@s.whatsapp.net', ''),
       });
+
       return customerCreate;
     }
 
@@ -135,7 +130,7 @@ export class ManageService {
 
   private async initialChat(received: proto.IWebMessageInfo, id?: number) {
     const wuid = received.key.remoteJid;
-
+    // Enviando mensagem de saudação.
     await this.sendMessage(
       received.key.remoteJid,
       {
@@ -147,17 +142,19 @@ export class ManageService {
       },
       { delay: 1000 },
     );
+    // Solicitando o nome
     await this.sendMessage(
       wuid,
       { extendedTextMessage: { text: 'Digite agora o seu nome:' } },
       { delay: 1000 },
     );
+    // Inicializando estágios do cliente.
     await this.cacheService.chatStage.create({
       wuid,
       stage: 'setName',
       customerId: id,
     });
-
+    // Iniciando um protocolo.
     await this.cacheService.transaction.create({
       initiated: Date.now().toString(),
       customerId: id,
@@ -166,10 +163,10 @@ export class ManageService {
 
   private async setName(received: proto.IWebMessageInfo, id?: number) {
     const wuid = received.key.remoteJid;
-
+    // Selecionando o nome do cliente.
     const name = this.selectedText(received.message);
-
-    if (name === '' || Number.parseFloat(name)) {
+    // Verificando se o nome exinste ou se é um número.
+    if (!name || Number.parseFloat(name)) {
       this.sendMessage(
         wuid,
         {
@@ -181,23 +178,26 @@ export class ManageService {
         },
         { delay: 1500, quoted: received },
       );
+      return;
     }
-
+    // Atualizando o usuário.
     this.cacheService.customer.update({ field: 'customerId', value: id }, { name: name });
-
+    // Buscando transação.
     const transaction = await this.cacheService.transaction.find({
       field: 'customerId',
       value: id,
       status: 'ACTIVE',
     });
-    // Composto pelo timestamp, convertido para segundos, mais o id do cliente.
+    // Compondo protocolo: composto pelo timestamp, convertido para segundos, mais o id do cliente.
     const protocol =
       Math.trunc(Number.parseInt(transaction.initiated) / 1000).toString() +
       '-' +
       transaction.transactionId;
+    // Atualizando transação com o número do protocolo.
     this.cacheService.transaction
       .update({ field: 'transactionId', value: transaction.transactionId }, { protocol })
       .then(({ protocol }) =>
+        // Informando para o usuário o número do seu protocolo.
         this.sendMessage(
           wuid,
           {
@@ -211,8 +211,13 @@ export class ManageService {
             transaction.transactionId,
             transaction.customerId,
           );
+          /**
+           * Caso haja somente um setor para o atendimento:
+           *  └> redirecionameos o cliente para o estágio assunto.
+           */
           if (sections?.length === 1) {
             this.cacheService.chatStage.update({ wuid }, { stage: 'setSubject' });
+            // Solicitando ao cliente o assunto do chamado.
             this.sendMessage(
               wuid,
               {
@@ -228,8 +233,12 @@ export class ManageService {
             );
             return;
           }
-
+          /**
+           * Caso haja mais de um setor:
+           *  └> redirecionamos o cliente para o estágio que verifica o setor.
+           */
           this.cacheService.chatStage.update({ wuid }, { stage: 'checkSector' });
+          // Enviando a lista de setores para o cliente.
           this.sendMessage(
             wuid,
             {
@@ -255,18 +264,30 @@ export class ManageService {
       );
   }
 
+  /**
+   * Durante a checagem do setor para o atendimento, o usuário pode:
+   *  ├> tanto digitar o nome do setor;
+   *  └> quanto clicar noitem de lista.
+   * Portanto trataremos os dois casos.
+   */
   private async checkSector(received: proto.IWebMessageInfo) {
     const wuid = received.key.remoteJid;
+    // Recuperando todos os setores
     const sectors = await this.cacheService.sector.findMany();
-
+    // Declaraando variáveis auxiliares.
     let findSector = false;
     let sectorId: number;
     let transaction: Transaction;
-
+    // Selecionando o texto digitado.
     const text = this.selectedText(received.message);
-    const selectedId = this.selectedIdMsg(received.message);
-
+    // Verificando se a variável text não é verdadeita e se o setor existe na lista de setores.
     if (text && sectors.find((s) => s.sector === text.toUpperCase())) {
+      /**
+       * Existindo:
+       *  ├> selecionamos o id do setor;
+       *  ├> atribuimos o valor true para a variável findSector, que usaremos mais tarde.
+       *  └> buscamos a transação do usuário.
+       */
       sectorId = sectors.find((s) => s.sector === text.toUpperCase()).sectorId;
       findSector = true;
       // transaction = await this.cacheService.transaction.find({
@@ -278,28 +299,41 @@ export class ManageService {
         value: { wuid },
         status: 'ACTIVE',
       });
+    } else {
+      // Selecionando o id do item de lista clicado (rowId)
+      const selectedId = this.selectedIdMsg(received.message);
+      // Verificando se o id existe e se é um id existente
+      if (
+        selectedId?.transaction &&
+        sectors.find((s) => s.sectorId === Number.parseInt(selectedId.sectorId))
+      ) {
+        /**
+         * Existindo:
+         *  ├> selecionamos o id do setor;
+         *  ├> atribuimos o valor true para a variável findSector, que usaremos mais tarde.
+         *  └> buscamos a transação do usuário.
+         */
+        sectorId = sectors.find(
+          (s) => s.sectorId === Number.parseInt(selectedId.sectorId),
+        ).sectorId;
+        findSector = true;
+        transaction = await this.cacheService.transaction.find({
+          field: 'transactionId',
+          value: Number.parseInt(selectedId.transaction),
+        });
+      }
     }
 
-    if (
-      selectedId?.transaction &&
-      sectors.find((s) => s.sectorId === Number.parseInt(selectedId.sectorId))
-    ) {
-      sectorId = sectors.find(
-        (s) => s.sectorId === Number.parseInt(selectedId.sectorId),
-      ).sectorId;
-      findSector = true;
-      transaction = await this.cacheService.transaction.find({
-        field: 'transactionId',
-        value: Number.parseInt(selectedId.transaction),
-      });
-    }
-
+    // Verificando se o setor foi encontrado e se a transação existe
     if (findSector && transaction) {
+      // Alterando estágio do usuário para informar o assunto.
       this.cacheService.chatStage.update({ wuid }, { stage: 'setSubject' });
+      // Atualizando transação com o id do setor
       await this.cacheService.transaction.update(
         { field: 'transactionId', value: transaction.transactionId },
         { sectorId },
       );
+      // Enviando mensagem oa cliente solicitando o assunto.
       this.sendMessage(
         wuid,
         {
@@ -313,11 +347,15 @@ export class ManageService {
         { delay: 1000 },
       );
     } else {
+      // Caso o setor não seja encontrado ou a transação não existir, informamos que houve um erro para o cliente
       this.sendMessage(
         wuid,
         {
           extendedTextMessage: {
-            text: '👆🏼👆🏼 Houve um erro ao atribuir esta categoria!\nTente novamente informar a categoria',
+            text: this.removeSpaces(
+              `👆🏼👆🏼 Houve um erro ao atribuir esta categoria!\nTente novamente informar a categoria.\n
+              Ou digite *-1*, para cancelar o atendimento`,
+            ),
           },
         },
         { delay: 1500, quoted: received },
@@ -327,7 +365,7 @@ export class ManageService {
 
   private async setSubject(received: proto.IWebMessageInfo) {
     const wuid = received.key.remoteJid;
-
+    // Buscando a transação na qual o cliente se encontra.
     const transaction = await this.cacheService.transaction.find({
       field: 'customerId',
       value: (
@@ -335,9 +373,10 @@ export class ManageService {
       ).customerId,
       status: 'ACTIVE',
     });
-
+    // Verificando se o cliente digitou o comando FIM, para cancelar o atendimento.
     const text = this.selectedText(received.message).trim().toLowerCase();
     if (text !== 'fim') {
+      // Começamos a atribuir o assunto à transação.
       if (!transaction?.subject) {
         transaction.subject = JSON.stringify([received as any]);
       } else {
@@ -347,15 +386,19 @@ export class ManageService {
         subject.push(received);
         transaction.subject = JSON.stringify(subject);
       }
+      // Atualizando transação com o assunto.
       this.cacheService.transaction.update(
         { field: 'transactionId', value: transaction.transactionId },
         { subject: transaction.subject },
       );
       return;
     }
-
+    /**
+     * Iniciando o gerenciador de filas, que colocará o cliente em espera e enviará para
+     * o primeiro artendente disponível do setor, uma solicitação de atendimento.
+     */
     this.manageQueue(transaction);
-
+    // Enviando mensagem para o usuário, após a sua finalização do assunto.
     this.sendMessage(
       wuid,
       {
@@ -366,21 +409,28 @@ export class ManageService {
       },
       { delay: 1500 },
     );
+    // Atualizando estágio do usuário.
     this.cacheService.chatStage.update({ wuid }, { stage: 'transaction' });
   }
 
   private async manageQueue(transaction: Transaction) {
+    // Buscando todas as transações, de acordo com a cláusula where.
     const transactions = await this.cacheService.transaction.findMany({
       where: { sectorId: transaction.sectorId, status: { notIn: 'PROCESSING' } },
     });
-
+    // Declarando variável que armazenará o atendente dispon´vel.
     let releaseAttendant: Attendant;
-
+    // Caso todos os atendentes do setor estivem disponíveis, atribuímos o primeiro.
     if (!transactions.find((t) => t.attendantId)) {
       releaseAttendant = await this.cacheService.attendant.set({
         where: { companySectorId: transaction.sectorId },
       });
     } else {
+      /**
+       * Caso não:
+       *  └> buscamos na tabela attendant, o primeiro atendente disponível para o setor
+       *     selecionado.
+       */
       releaseAttendant = await this.cacheService.attendant.set({
         where: {
           attendantId: { notIn: [...new Set(transactions.map((t) => t.attendantId))] },
@@ -389,34 +439,43 @@ export class ManageService {
       });
     }
 
+    // Buscando o usuáro relacionado à transação.
     const customer = await this.cacheService.customer.find({
       field: 'customerId',
       value: transaction.customerId,
     });
 
+    /**
+     * Nesse ponto, iniciaremos a atribuição da imagem de perfil do cliente:
+     */
+    // Declarando variáveis auxiliares.
     let imageMessage: proto.IImageMessage;
     let contentText: string;
     let headerType: number;
-
+    // Checamos a propriedade profilePictureUrl.
     if (customer.profilePictureUrl !== 'no image') {
       try {
+        // Preparando a mensagen de mídia.
         const prepareMedia = await prepareWAMessageMedia(
           { image: { url: customer.profilePictureUrl } },
           { upload: this.instance.client.waUploadToServer },
         );
+        // Atribuindo variáveis auxiliares.
         imageMessage = prepareMedia.imageMessage;
         headerType = 4;
-
         contentText = this.removeSpaces(`*Protocolo: ${transaction.protocol}*
           *Clente:* ${customer.name || customer.pushName}
+          *Id do cliente:* ${customer.customerId}
           *Contato:* ${customer.phoneNumber}`);
       } catch (error) {
+        // Caso a preparação cause algum erro, ignoramos a imagem de perfil do cliente.
         headerType = 2;
         contentText = this.removeSpaces(`*Clente:* ${customer.name || customer.pushName}
           *Contato:* ${customer.phoneNumber}`);
       }
     }
 
+    // Informando ao atendente selecionado que existe uma nova solicitação de atendimento.
     return this.sendMessage(
       releaseAttendant.wuid,
       {
@@ -426,6 +485,7 @@ export class ManageService {
       },
       { delay: 1000 },
     ).then(() =>
+      // Solicitando a aceitação da solicitação ao atendente.
       this.sendMessage(releaseAttendant.wuid, {
         buttonsMessage: {
           text: `*Protocolo: ${transaction.protocol}*`,
@@ -528,6 +588,7 @@ export class ManageService {
         },
         { delay: 1500 },
       );
+
       return;
     }
 
@@ -537,7 +598,101 @@ export class ManageService {
     return transaction;
   }
 
-  // Esta função transacionará as mensagens do atendente para o cliente
+  // Esta função reconhece se o atendente aceito o atendimento, ou não.
+  private async checkAcceptance(received: proto.IWebMessageInfo) {
+    /**
+     * Alocando resposta do clique do botão, se houver,
+     * pois o atendente pode clicar no botão, bem como
+     * digitar um texto.
+     */
+    const selected = this.selectedIdMsg(received.message);
+    // Caso digite um texto, interrompemos este trecho de código.
+    if (!selected) {
+      return false;
+    }
+    // wuid => whatsapp unique identifier
+    const wuid = received.key.remoteJid;
+    // Buscando transação selecionada.
+    const transaction = await this.cacheService.transaction.find({
+      field: 'transactionId',
+      value: Number.parseInt(selected?.transaction),
+    });
+    const attendant = this.cacheService.attendant.getAttendant(wuid);
+    // Verificando se o atendente aceitou a solicitação.
+    if (selected?.action === 'accept') {
+      // Verificando se a solicitação não foi atendida por outro atendente.
+      if (transaction?.attendantId) {
+        this.sendMessage(
+          wuid,
+          {
+            extendedTextMessage: {
+              text: 'Esta solicitação já foi atendida por outro atendente',
+            },
+          },
+          { delay: 1000 },
+        );
+
+        return;
+      } else {
+        // Atribuindo todas as informações do atendente no cache.
+        const releaseAttendant = await this.cacheService.attendant.set({
+          where: { attendantId: attendant.attendantId },
+        });
+        // Atualizando transação com o id do atendente.
+        this.cacheService.transaction.update(
+          {
+            field: 'transactionId',
+            value: transaction.transactionId,
+          },
+          { attendantId: releaseAttendant.attendantId },
+        );
+        // Enviando o assunto da transação para o atendente.
+        const subject: proto.IWebMessageInfo[] = JSON.parse(
+          transaction.subject as string,
+        );
+        this.sendMessage(
+          wuid,
+          { extendedTextMessage: { text: '*ASSUNTO*' } },
+          { delay: 1500 },
+        );
+        for await (const message of subject) {
+          await this.sendMessage(wuid, message.message);
+        }
+        // Enviando mensagem para o atendente, informando que o chat já está vinculado.
+        this.sendMessage(
+          wuid,
+          {
+            extendedTextMessage: {
+              text: 'Ótimo!\nVocê já pode conversar com o cliente.',
+            },
+          },
+          { delay: 1200 },
+        );
+        // Buscando informações do cliente.
+        const customer = await this.cacheService.customer.find({
+          field: 'customerId',
+          value: transaction.customerId,
+        });
+        // Enviando mensagem para o cliente informando que o chat está liberado.
+        this.sendMessage(
+          customer.wuid,
+          {
+            extendedTextMessage: {
+              text: this.removeSpaces(
+                `Olá ${customer.name}! Meu nome é ${releaseAttendant.shortName} e irei realizar o seu atendimento.
+                Já estou analizando o seu assunto, me aguarde um momento!`,
+              ),
+            },
+          },
+          { delay: 1000 },
+        );
+      }
+
+      return true;
+    }
+  }
+
+  // Esta função transacionará as mensagens do atendente para o cliente.
   private async transactionAttendant(received: proto.IWebMessageInfo) {
     const wuid = received.key.remoteJid;
 
@@ -566,7 +721,7 @@ export class ManageService {
         wuid,
         {
           extendedTextMessage: {
-            text: 'No momento, você não está em nem um atendimento; aguarde até ser vinculado a um.',
+            text: 'No momento, você não está envolvido nem um atendimento.\nAguarde até ser vinculado a um.',
           },
         },
         { delay: 1500 },
@@ -604,7 +759,7 @@ export class ManageService {
     let transaction: Transaction;
 
     // Verificando se o remetente da mensagem é um atendente.
-    const attendant = this.cacheService.attendant.getAttendants(wuid);
+    const attendant = this.cacheService.attendant.getAttendant(wuid);
 
     if (!attendant) {
       // Carregando cliente
@@ -631,7 +786,13 @@ export class ManageService {
         )) as Transaction;
       }
     } else {
-      transaction = await this.transactionAttendant(received);
+      /**
+       * Caso a verificação do clieque do botão do atendente, retorne false, executamos
+       * a função transactionAttendant.
+       */
+      (await this.checkAcceptance(received)) === false
+        ? (transaction = await this.transactionAttendant(received))
+        : undefined;
     }
   }
 }
