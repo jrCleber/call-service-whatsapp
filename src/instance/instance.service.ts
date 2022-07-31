@@ -112,24 +112,29 @@ export class InstanceWA {
       this.logger.warn('You are already connected to this instance');
       return true;
     }
-
     // Iniciando a authenticação e conexão com o whatsapp
     this.instance.authState = await useMultiFileAuthState(
       join(INSTANCE_DIR, this.instance.instanceKey),
     );
 
     const { version, isLatest } = await fetchLatestBaileysVersion();
-
+    // Configurando como será exibido a conexão noaprelho.
     const browser: WABrowserDescription = [
       this.env.BROWSER.CLIENT,
       this.env.BROWSER.NAME,
       release(),
     ];
-
+    /**
+     * Inserindo as configurações para a conexão.
+     * https://github.com/adiwajshing/Baileys#configuring-the-connection
+     */
     const socketConfig: UserFacingSocketConfig = {
       auth: this.instance.authState.state,
       logger: P({ level: 'error' }),
       printQRInTerminal: true,
+      msgRetryCounterMap: {},
+      linkPreviewImageThumbnailWidth: 1600,
+      markOnlineOnConnect: false,
       browser,
       version,
       connectTimeoutMs: 60_000,
@@ -155,24 +160,19 @@ export class InstanceWA {
       if (type !== 'notify' || !received?.message) {
         return;
       }
-
       // Verificando se a mensagem é do tipo reaction.
       const keys = Object.keys(received.message);
       if (keys.includes('reactionMessage')) {
         return;
       }
-
       // ignorando mensagens de grupo
       if (isJidGroup(received.key.remoteJid)) {
         return;
       }
-
       // mostrando mensagem recebida no console
       this.logger.log({ type, messgage: { ...received } });
-
       // setanso cliente em manageService
       this.manageService.client = this.instance;
-
       // iniciando o precessador de mensagens
       messageProcessing(
         {

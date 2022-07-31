@@ -1,14 +1,16 @@
 import { delay, prepareWAMessageMedia, proto } from '@adiwajshing/baileys';
-import { Attendant, CallCenter } from '@prisma/client';
+import { Attendant, CallCenter, Prisma } from '@prisma/client';
 import dayjs from 'dayjs';
+import { Customer } from '../cache/customer.cache';
 import { Transaction } from '../cache/transaction.cache';
 import { formatDate, timeDay } from '../common/format.date';
 import { Logger } from '../common/logger';
+import { PrismaService } from '../prisma/prisma.service';
 import { CacheService, CallCenterService, Weekday } from '../services/cache.service';
 import { Commands } from './command/commands';
 import { Instance } from './instance.service';
 
-type Options = { delay?: number; quoted?: proto.IWebMessageInfo };
+export type Options = { delay?: number; quoted?: proto.IWebMessageInfo };
 
 type ItemSelected = {
   transaction?: string;
@@ -16,6 +18,12 @@ type ItemSelected = {
   action?: string;
   callCenterId?: string;
   sectorId?: string;
+};
+
+type TextCommand = {
+  text?: keyof Commands;
+  param1?: string;
+  param2?: number;
 };
 
 enum Replace {
@@ -27,6 +35,7 @@ export class ManageService {
   constructor(
     private readonly cacheService: CacheService,
     private readonly commands: Commands,
+    private readonly prismaService: PrismaService,
   ) {
     //
   }
@@ -68,6 +77,36 @@ export class ManageService {
     if (message?.conversation) return message.conversation;
     if (message?.extendedTextMessage) return message.extendedTextMessage.text;
     return;
+  }
+
+  private async saveMessage(transaction: Transaction, received: proto.IWebMessageInfo) {
+    const wuid = received.key.remoteJid;
+    const header = received.key as Prisma.JsonObject;
+    const body = received.message as Prisma.JsonObject;
+
+    const customer = await this.cacheService.customer.find({
+      field: 'wuid',
+      value: wuid,
+    });
+
+    this.prismaService.messageWA
+      .create({
+        data: {
+          header,
+          body,
+          sender: customer ? 'C' : 'A',
+          wuid,
+          senderAt: Date.now().toString(),
+          transactionId: transaction.transactionId,
+        },
+      })
+      .then((result) => this.logger.info(`Message id: ${result.messageId} - CREATED`))
+      .catch((error) =>
+        this.logger.error({
+          local: ManageService.name + '.' + ManageService.prototype.saveMessage.name,
+          error,
+        }),
+      );
   }
 
   private selectedIdMsg(message: proto.IMessage) {
@@ -424,6 +463,77 @@ export class ManageService {
     this.cacheService.chatStage.update({ wuid }, { stage: 'transaction' });
   }
 
+  // Esta função envia uma solicitação de atendimento ao atendente.
+  private async serviceRequest(
+    transaction: Transaction,
+    customer: Customer,
+    attendant: Attendant,
+  ) {
+    /**
+     * Nesse ponto, iniciaremos a atribuição da imagem de perfil do cliente:
+     */
+    // Declarando variáveis auxiliares.
+    let imageMessage: proto.IImageMessage;
+    let contentText: string;
+    let headerType: number;
+    // Checamos a propriedade profilePictureUrl.
+    if (customer.profilePictureUrl !== 'no image') {
+      try {
+        // Preparando a mensagen de mídia.
+        const prepareMedia = await prepareWAMessageMedia(
+          { image: { url: customer.profilePictureUrl } },
+          { upload: this.instance.client.waUploadToServer },
+        );
+        // Atribuindo variáveis auxiliares.
+        imageMessage = prepareMedia.imageMessage;
+        headerType = 4;
+        contentText = this.formatText(`*Protocolo: ${transaction.protocol}*
+          *Clente:* ${customer.name || customer.pushName}
+          *Id do cliente:* ${customer.customerId}
+          *Contato:* ${customer.phoneNumber}`);
+      } catch (error) {
+        // Caso a preparação cause algum erro, ignoramos a imagem de perfil do cliente.
+        headerType = 2;
+        contentText = this.formatText(`*Clente:* ${customer.name || customer.pushName}
+          *Contato:* ${customer.phoneNumber}`);
+      }
+    }
+
+    // Informando ao atendente selecionado que existe uma nova solicitação de atendimento.
+    this.sendMessage(
+      attendant.wuid,
+      {
+        extendedTextMessage: {
+          text: '⚠️ *ATEÇÂO* ⚠️\nNova solicitação de atendimento.',
+        },
+      },
+      { delay: 1000 },
+    ).then(() =>
+      // Solicitando a aceitação da solicitação ao atendente.
+      this.sendMessage(attendant.wuid, {
+        buttonsMessage: {
+          text: `*Protocolo: ${transaction.protocol}*`,
+          contentText,
+          footerText: `Início: ${formatDate(transaction.initiated)}`,
+          headerType,
+          imageMessage,
+          buttons: [
+            {
+              buttonId: 'accept-' + transaction.transactionId.toString(),
+              buttonText: { displayText: 'Aceitar Atendimento' },
+              type: 1,
+            },
+            {
+              buttonId: 'not_accept-' + transaction.transactionId.toString(),
+              buttonText: { displayText: 'Não aceitar' },
+              type: 1,
+            },
+          ],
+        },
+      }),
+    );
+  }
+
   private async manageQueue(transaction: Transaction) {
     // Buscando todos os setores.
     const sectors = await this.cacheService.sector.findMany();
@@ -466,69 +576,9 @@ export class ManageService {
       value: transaction.customerId,
     });
 
-    /**
-     * Nesse ponto, iniciaremos a atribuição da imagem de perfil do cliente:
-     */
-    // Declarando variáveis auxiliares.
-    let imageMessage: proto.IImageMessage;
-    let contentText: string;
-    let headerType: number;
-    // Checamos a propriedade profilePictureUrl.
-    if (customer.profilePictureUrl !== 'no image') {
-      try {
-        // Preparando a mensagen de mídia.
-        const prepareMedia = await prepareWAMessageMedia(
-          { image: { url: customer.profilePictureUrl } },
-          { upload: this.instance.client.waUploadToServer },
-        );
-        // Atribuindo variáveis auxiliares.
-        imageMessage = prepareMedia.imageMessage;
-        headerType = 4;
-        contentText = this.formatText(`*Protocolo: ${transaction.protocol}*
-          *Clente:* ${customer.name || customer.pushName}
-          *Id do cliente:* ${customer.customerId}
-          *Contato:* ${customer.phoneNumber}`);
-      } catch (error) {
-        // Caso a preparação cause algum erro, ignoramos a imagem de perfil do cliente.
-        headerType = 2;
-        contentText = this.formatText(`*Clente:* ${customer.name || customer.pushName}
-          *Contato:* ${customer.phoneNumber}`);
-      }
-    }
+    this.serviceRequest(transaction, customer, releaseAttendant);
 
-    // Informando ao atendente selecionado que existe uma nova solicitação de atendimento.
-    return this.sendMessage(
-      releaseAttendant.wuid,
-      {
-        extendedTextMessage: {
-          text: '⚠️ *ATEÇÂO* ⚠️\nNova solicitação de atendimento.',
-        },
-      },
-      { delay: 1000 },
-    ).then(() =>
-      // Solicitando a aceitação da solicitação ao atendente.
-      this.sendMessage(releaseAttendant.wuid, {
-        buttonsMessage: {
-          text: `*Protocolo: ${transaction.protocol}*`,
-          contentText,
-          footerText: `Início: ${formatDate(transaction.initiated)}`,
-          headerType,
-          imageMessage,
-          buttons: [
-            {
-              buttonId: 'accept-' + transaction.transactionId.toString(),
-              buttonText: { displayText: 'Aceitar Atendimento' },
-              type: 1,
-            },
-            {
-              buttonId: 'not_accept-' + transaction.transactionId.toString(),
-              buttonText: { displayText: 'Não aceitar' },
-              type: 1,
-            },
-          ],
-        },
-      }),
-    );
+    return;
   }
 
   // O principal objetivo desta função é transacionar asmensagens do cliente para o atendente
@@ -662,6 +712,11 @@ export class ManageService {
       field: 'transactionId',
       value: Number.parseInt(selected?.transaction),
     });
+    // Buscando informações do cliente.
+    const customer = await this.cacheService.customer.find({
+      field: 'customerId',
+      value: transaction.customerId,
+    });
     const attendant = this.cacheService.attendant.getAttendant(wuid);
     // Verificando se o atendente aceitou a solicitação.
     if (selected?.action === 'accept') {
@@ -685,11 +740,12 @@ export class ManageService {
         });
         // Atualizando transação com o id do atendente.
         this.cacheService.transaction.update(
+          { field: 'transactionId', value: transaction.transactionId },
           {
-            field: 'transactionId',
-            value: transaction.transactionId,
+            attendantId: releaseAttendant.attendantId,
+            startProcessing: Date.now().toString(),
+            status: 'PROCESSING',
           },
-          { attendantId: releaseAttendant.attendantId },
         );
         // Enviando o assunto da transação para o atendente.
         const subject: proto.IWebMessageInfo[] = JSON.parse(
@@ -727,11 +783,6 @@ export class ManageService {
           },
           { delay: 1200 },
         );
-        // Buscando informações do cliente.
-        const customer = await this.cacheService.customer.find({
-          field: 'customerId',
-          value: transaction.customerId,
-        });
         // Enviando mensagem para o cliente informando que o chat está liberado.
         this.sendMessage(
           customer.wuid,
@@ -749,19 +800,41 @@ export class ManageService {
 
       return true;
     }
+
+    // O atendente não aceitando a solicitação, buscamos todas as transações.
+    const transactions = await this.cacheService.transaction.findMany({
+      where: { sectorId: transaction.sectorId, status: { notIn: 'PROCESSING' } },
+    });
+    // Declarando variável que armazenará o atendente dispon´vel.
+    let releaseAttendant: Attendant;
+    // Caso todos os atendentes do setor estivem disponíveis, atribuímos o primeiro.
+    if (!transactions.find((t) => t.attendantId)) {
+      releaseAttendant = await this.cacheService.attendant.set({
+        where: { companySectorId: transaction.sectorId },
+      });
+    } else {
+      /**
+       * Caso não:
+       *  └> buscamos na tabela attendant, o primeiro atendente disponível para o setor
+       *     selecionado.
+       */
+      releaseAttendant = await this.cacheService.attendant.set({
+        where: {
+          attendantId: { notIn: [...new Set(transactions.map((t) => t.attendantId))] },
+          companySectorId: transaction.sectorId,
+        },
+      });
+    }
+    // Enviando mensagem para o atendente.
+    if (releaseAttendant) {
+      this.serviceRequest(transaction, customer, releaseAttendant);
+      return true;
+    }
   }
 
   // Esta função transacionará as mensagens do atendente para o cliente.
   private async transactionAttendant(received: proto.IWebMessageInfo) {
     const wuid = received.key.remoteJid;
-
-    // Verificando se o attendente inseriu um comando válido.
-    const textCommand = this.selectedText(received.message) as keyof Commands;
-    const command = this.commands[textCommand];
-    if (command) {
-      command();
-      return;
-    }
 
     // Buscando dados do atendente.
     const attendant = await this.cacheService.attendant.find({
@@ -785,6 +858,31 @@ export class ManageService {
         },
         { delay: 1500 },
       );
+      return;
+    }
+
+    // Verificando se o attendente inseriu um comando válido.
+    const textCommand = this.selectedText(received.message) as keyof Commands;
+    if (this.commands[textCommand]) {
+      this.commands.setInstance = this.instance;
+      this.commands.waSendMessage = this.sendMessage;
+      // Recebendo transação disponível.
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      const releaseTransaction = (await this.commands[textCommand](
+        transaction,
+      )) as Transaction;
+      // Verificando se existe uma transação.
+      if (releaseTransaction) {
+        // Buscando o cliente.
+        const customer = await this.cacheService.customer.find({
+          field: 'customerId',
+          value: releaseTransaction.customerId,
+        });
+        // Enviando solicitação de atendimento ao atendente.
+        this.serviceRequest(releaseTransaction, customer, attendant);
+      }
+
       return;
     }
 
@@ -817,6 +915,49 @@ export class ManageService {
     }
 
     return true;
+  }
+
+  private async operationAttendant(received: proto.IWebMessageInfo) {
+    const wuid = received.key.remoteJid;
+    // Declarando variável que receberá o comando,
+    const textCommand: TextCommand = {};
+    // Verificando se o attendente inseriu um comando válido.
+    const selectedText = this.selectedText(received.message);
+    // Verificando o tipo do camando.
+    const split = selectedText?.split(' ');
+    if (!split) {
+      return;
+    }
+    if (split.length === 1) {
+      textCommand.text = split[0] as keyof Commands;
+      /**
+       * O comando &end, é o único comando que o usuário executa estando vinculado a
+       * uma transação. E, no decorrer da execução, o código o informa que o atendente
+       * não está vinculado a nem um atendimento.
+       */
+      if (textCommand.text === '&end') {
+        return false;
+      }
+    } else if (split.length > 0) {
+      textCommand.text = split[0] as keyof Commands;
+      const params = split[1].split('=');
+      textCommand.param1 = params[0];
+      textCommand.param2 =
+        Number.parseInt(params[1]).toString() !== 'NaN'
+          ? Number.parseInt(params[1])
+          : undefined;
+    }
+    // Buscando atendente.
+    const attendant = await this.cacheService.attendant.set({ where: { wuid } });
+    // Verificando se a referêcia da função de comado é verdadeira.
+    if (this.commands[textCommand.text]) {
+      this.commands.setInstance = this.instance;
+      this.commands.waSendMessage = this.sendMessage;
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      this.commands[textCommand.text](attendant, textCommand.param2);
+      return true;
+    }
   }
 
   public async messageManagement(received: proto.IWebMessageInfo) {
@@ -857,13 +998,13 @@ export class ManageService {
                 hydratedTitleText: `Olá ${customer.name}, ${timeDay(
                   dayjs().hour(),
                 ).toLowerCase()}😉!`,
-                hydratedContentText: this.formatText(
-                  `A nossa equipe 🤝🏼 agradece a sua mensage!
-                  No momento nós não estamos disponíveis🙂!\n
-                  Nosso horário de funcionamento é das *${operation.open}h* às *${operation.closed}h*` +
-                    `${operation?.desc ? 'de ' + operation.desc : '.'}\n
-                    Para mais informações, acesse a nossa página!`,
-                ),
+                hydratedContentText:
+                  'A nossa equipe 🤝🏼 agradece a sua mensage!\n' +
+                  'No momento nós não estamos disponíveis🙂!\n\n' +
+                  'Nosso horário de funcionamento é das' +
+                  `*${operation.open}h* às *${operation.closed}h*` +
+                  `${operation?.desc ? 'de ' + operation.desc : '.'}\n\n` +
+                  'Para mais informações, acesse a nossa página!',
                 hydratedFooterText: this.callCenter.botName.toLowerCase(),
                 hydratedButtons: [
                   {
@@ -903,13 +1044,24 @@ export class ManageService {
         )) as Transaction;
       }
     } else {
+      // Verificando se o attendente digitou algum comando
+      if (await this.operationAttendant(received)) {
+        return;
+      }
       /**
        * Caso a verificação do clieque do botão do atendente retorne false, executamos
        * a função transactionAttendant.
        */
-      (await this.checkAcceptance(received)) === false
-        ? (transaction = await this.transactionAttendant(received))
-        : undefined;
+      if ((await this.checkAcceptance(received)) === false) {
+        transaction = await this.transactionAttendant(received);
+      }
+    }
+    /**
+     * Verificando se o valor da transação retorna verdadeiro, pra salvarmos
+     * a mensagem no banco de dados associada ao id da transação.
+     */
+    if (transaction) {
+      //
     }
   }
 }

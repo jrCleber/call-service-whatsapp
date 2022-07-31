@@ -38,10 +38,10 @@ const cacheService = new CacheService(
 );
 
 // Instanciando dependência Comando.
-const commands = new Commands(prismaService, cacheService);
+const commands = new Commands(cacheService, prismaService);
 
 // Instanciando gerenciado de atendimento e injetando dependência.
-const manageService = new ManageService(cacheService, commands);
+const manageService = new ManageService(cacheService, commands, prismaService);
 
 // Instanciando serviço de inicialização e injetando suas dependências.
 const startupService = new StartupService(
