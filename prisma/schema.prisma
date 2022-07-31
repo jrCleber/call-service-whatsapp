@@ -20,6 +20,7 @@ model CallCenter {
   createAt      String          @db.VarChar(14)
   loggedAt      String?         @db.VarChar(14)
   updateAt      String?         @db.VarChar(14)
+  operation     Json            @db.Json
   Attendant     Attendant[]
   CompanySector CompanySector[]
 }

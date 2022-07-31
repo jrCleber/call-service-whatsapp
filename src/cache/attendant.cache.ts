@@ -46,11 +46,23 @@ export class AttendantCache {
     );
   }
 
-  public find(where: Query) {
+  public async find(where: Query) {
     // Recuperando a referência da lista de atendentes no cache.
     const attendants = this.cache.get<Attendant[]>(AttendantCache.name) || [];
     // Atribuindo atendente selecionado à uma variável.
     const attendant = attendants.find((a) => a[where.field] === where.value);
+    // Verificando se o atendente existe,
+    if (!attendant) {
+      // const findAttendant = await this.prismaService.attendant.findUnique({
+      //   where: { [where.field]: where.value as number },
+      // });
+      const findAttendant = await this.prismaService.attendant.findFirst({
+        where: { [where.field]: where.value as number },
+      });
+      attendants.push(findAttendant),
+        this.cache.set(AttendantCache.name, [...attendants]);
+      return findAttendant;
+    }
 
     // Retornando attendente selecionado.
     return attendant;
@@ -75,9 +87,9 @@ export class AttendantCache {
     return attendant;
   }
 
-  public remove(del: Query) {
+  public async remove(del: Query) {
     // Buscando o atendente a ser removido.
-    const attendant = this.find({ field: del.field, value: del.value });
+    const attendant = await this.find({ field: del.field, value: del.value });
     // Buscando a lista de atendentes.
     const attendants = this.cache.get<Attendant[]>(AttendantCache.name);
     // Recuperando o index do atendente a ser removido.

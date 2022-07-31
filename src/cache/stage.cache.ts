@@ -31,7 +31,7 @@ export class StageCache {
        */
       chatStage = await this.prismaService.chatStage.upsert({
         where: { wuid: data.wuid },
-        create: { wuid: data.wuid, stage: data.stage },
+        create: { wuid: data.wuid, stage: data.stage, customerId: data.customerId },
         update: { stage: data.stage },
       });
       // Inserinfo estágio do cliente no cache.

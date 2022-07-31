@@ -156,6 +156,12 @@ export class InstanceWA {
         return;
       }
 
+      // Verificando se a mensagem é do tipo reaction.
+      const keys = Object.keys(received.message);
+      if (keys.includes('reactionMessage')) {
+        return;
+      }
+
       // ignorando mensagens de grupo
       if (isJidGroup(received.key.remoteJid)) {
         return;
@@ -184,7 +190,20 @@ export class InstanceWA {
     });
 
     ev.on('messages.update', (args) => {
-      //
+      const update = args[0];
+      const status = {
+        1: 'PENDING',
+        2: 'SERVER_ACK',
+        3: 'DELIVERY_ACK',
+        4: 'READ_ACK',
+      };
+      const key = update.key;
+      this.logger.log({
+        'messages.update': {
+          key,
+          status: status[update.update.status as keyof typeof status],
+        },
+      });
     });
   }
 

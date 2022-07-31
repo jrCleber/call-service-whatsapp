@@ -15,7 +15,7 @@ export class SectorCache {
     setInterval(async () => {
       const sectors = await this.prismaService.companySector.findMany();
       this.cache.set(SectorCache.name, [...sectors]);
-    }, 60000);
+    }, 1000);
   }
 
   public async findMany() {

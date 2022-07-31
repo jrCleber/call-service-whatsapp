@@ -4,7 +4,7 @@ import dayjs from 'dayjs';
 import { Transaction } from '../cache/transaction.cache';
 import { formatDate, timeDay } from '../common/format.date';
 import { Logger } from '../common/logger';
-import { CacheService } from '../services/cache.service';
+import { CacheService, CallCenterService, Weekday } from '../services/cache.service';
 import { Commands } from './command/commands';
 import { Instance } from './instance.service';
 
@@ -32,14 +32,14 @@ export class ManageService {
   }
 
   private instance: Instance = {};
-  private callCenter: CallCenter;
+  private callCenter: CallCenterService;
   private readonly logger = new Logger(ManageService.name);
 
   public set client(value: any) {
     this.instance = value;
   }
 
-  private removeSpaces(value: string, regex = /^ +/gm) {
+  private formatText(value: string, regex = /^ +/gm) {
     return value.replace(regex, '');
   }
 
@@ -84,6 +84,11 @@ export class ManageService {
     return selectedId;
   }
 
+  /**
+   * Criando uma lista de setores
+   * @param tId -> transactionId
+   * @param cId -> customerId
+   */
   private async createList(tId: number, cId: number): Promise<proto.ISection[]> {
     const sectors = await this.cacheService.sector.findMany();
     const rows: proto.IRow[] = Array.from(sectors, (sector) => {
@@ -96,6 +101,10 @@ export class ManageService {
     return [{ title: 'SETORES', rows }];
   }
 
+  /**
+   * Buscando a imagem de perfil do usuário.
+   * @param wuid -> whatsapp unique identifier
+   */
   private async profilePicture(wuid: string) {
     try {
       return await this.instance.client.profilePictureUrl(wuid, 'image');
@@ -172,7 +181,7 @@ export class ManageService {
         {
           extendedTextMessage: {
             text: this
-              .removeSpaces(`A mensagem que você enviou para não é válida para ser atribuída ao um nome.\n
+              .formatText(`A mensagem que você enviou para não é válida para ser atribuída ao um nome.\n
             Informe o seu nome:`),
           },
         },
@@ -207,26 +216,22 @@ export class ManageService {
           },
           { delay: 1000 },
         ).then(async () => {
-          const sections = await this.createList(
-            transaction.transactionId,
-            transaction.customerId,
-          );
+          const sectors = await this.cacheService.sector.findMany();
           /**
            * Caso haja somente um setor para o atendimento:
            *  └> redirecionameos o cliente para o estágio assunto.
            */
-          if (sections?.length === 1) {
+          if (sectors?.length === 1) {
             this.cacheService.chatStage.update({ wuid }, { stage: 'setSubject' });
             // Solicitando ao cliente o assunto do chamado.
             this.sendMessage(
               wuid,
               {
                 extendedTextMessage: {
-                  text: `${this
-                    .removeSpaces(`Informe agora o assunto do seu atendimento.\n
+                  text: `${this.formatText(`Informe agora o assunto do seu atendimento.\n
                   Pode ser um text, ou vídeo, ou imagem, etc.
                   E quando vc terminar, envie a palavra:\n`)}
-                  *FIM*\n`,
+                                  *FIM*\n`,
                 },
               },
               { delay: 1000 },
@@ -237,6 +242,11 @@ export class ManageService {
            * Caso haja mais de um setor:
            *  └> redirecionamos o cliente para o estágio que verifica o setor.
            */
+
+          const sections = await this.createList(
+            transaction.transactionId,
+            transaction.customerId,
+          );
           this.cacheService.chatStage.update({ wuid }, { stage: 'checkSector' });
           // Enviando a lista de setores para o cliente.
           this.sendMessage(
@@ -338,7 +348,7 @@ export class ManageService {
         wuid,
         {
           extendedTextMessage: {
-            text: `${this.removeSpaces(`Informe agora o assunto do seu atendimento.\n
+            text: `${this.formatText(`Informe agora o assunto do seu atendimento.\n
             Pode ser um text, ou vídeo, ou imagem, etc.
             E quando vc terminar, envie a palavra:\n`)}
                             *FIM*\n`,
@@ -352,7 +362,7 @@ export class ManageService {
         wuid,
         {
           extendedTextMessage: {
-            text: this.removeSpaces(
+            text: this.formatText(
               `👆🏼👆🏼 Houve um erro ao atribuir esta categoria!\nTente novamente informar a categoria.\n
               Ou digite *-1*, para cancelar o atendimento`,
             ),
@@ -374,7 +384,7 @@ export class ManageService {
       status: 'ACTIVE',
     });
     // Verificando se o cliente digitou o comando FIM, para cancelar o atendimento.
-    const text = this.selectedText(received.message).trim().toLowerCase();
+    const text = this.selectedText(received.message)?.trim().toLowerCase();
     if (text !== 'fim') {
       // Começamos a atribuir o assunto à transação.
       if (!transaction?.subject) {
@@ -403,8 +413,9 @@ export class ManageService {
       wuid,
       {
         extendedTextMessage: {
-          text: `Ótimo! Aguarde um momento!\nLogo você será atendido pela nossa equipe.\n
-          Para cancelar o atendimento, a qualquer momento, digit: *-1*`,
+          text: this
+            .formatText(`Ótimo! Aguarde um momento!\nLogo você será atendido pela nossa equipe.\n
+          Para cancelar o atendimento, a qualquer momento, digit: *-1*`),
         },
       },
       { delay: 1500 },
@@ -414,9 +425,19 @@ export class ManageService {
   }
 
   private async manageQueue(transaction: Transaction) {
+    // Buscando todos os setores.
+    const sectors = await this.cacheService.sector.findMany();
+    let sectorId: number;
+    // Verificando a quantidade de setores.
+    if (sectors.length === 1) {
+      sectorId = sectors[0].sectorId;
+    }
     // Buscando todas as transações, de acordo com a cláusula where.
     const transactions = await this.cacheService.transaction.findMany({
-      where: { sectorId: transaction.sectorId, status: { notIn: 'PROCESSING' } },
+      where: {
+        sectorId: transaction.sectorId || sectorId,
+        status: { notIn: 'PROCESSING' },
+      },
     });
     // Declarando variável que armazenará o atendente dispon´vel.
     let releaseAttendant: Attendant;
@@ -463,14 +484,14 @@ export class ManageService {
         // Atribuindo variáveis auxiliares.
         imageMessage = prepareMedia.imageMessage;
         headerType = 4;
-        contentText = this.removeSpaces(`*Protocolo: ${transaction.protocol}*
+        contentText = this.formatText(`*Protocolo: ${transaction.protocol}*
           *Clente:* ${customer.name || customer.pushName}
           *Id do cliente:* ${customer.customerId}
           *Contato:* ${customer.phoneNumber}`);
       } catch (error) {
         // Caso a preparação cause algum erro, ignoramos a imagem de perfil do cliente.
         headerType = 2;
-        contentText = this.removeSpaces(`*Clente:* ${customer.name || customer.pushName}
+        contentText = this.formatText(`*Clente:* ${customer.name || customer.pushName}
           *Contato:* ${customer.phoneNumber}`);
       }
     }
@@ -520,8 +541,11 @@ export class ManageService {
       value: id,
     });
 
-    // declarando variável que armazenará os dados do atendente.
-    let attendant: Attendant;
+    // Buscando atendente.
+    const attendant = await this.cacheService.attendant.find({
+      field: 'attendantId',
+      value: transaction.attendantId,
+    });
 
     // Selecionando o texto das mensagens de texto.
     const selectedText = this.selectedText(received.message);
@@ -543,11 +567,7 @@ export class ManageService {
         { delay: 1500 },
       );
       // Verificando se existe um atendente vinculado a esse atendimento.
-      if (transaction?.attendantId) {
-        attendant = this.cacheService.attendant.find({
-          field: 'attendantId',
-          value: transaction.attendantId,
-        });
+      if (!attendant || Object?.keys(attendant).length === 0) {
         this.sendMessage(attendant.wuid, {
           extendedTextMessage: {
             text: `*Protocolo: ${transaction.protocol}*
@@ -582,8 +602,9 @@ export class ManageService {
         wuid,
         {
           extendedTextMessage: {
-            text: `Aguarde um momento!\nLogo você será atendido pela nossa equipe.\n
-            Para cancelar o atendimento, a qualquer momento, digit: *-1*`,
+            text: this
+              .formatText(`Aguarde um momento!\nLogo você será atendido pela nossa equipe.\n
+            Para cancelar o atendimento, a qualquer momento, digite: *-1*`),
           },
         },
         { delay: 1500 },
@@ -593,7 +614,32 @@ export class ManageService {
     }
 
     // Encaminhando mensagem para o atendente.
-    this.sendMessage(attendant.wuid, received.message, { delay: 1500 });
+    this.sendMessage(attendant.wuid, received.message, { delay: 1500 }).then(
+      async (quoted) => {
+        /**
+         * Para que o atendente não se perca no chat, vamos citar a mensagem
+         * encaminhada pelo usuário com as informações da transação.
+         * Isso facilitará a busca de mensagens no chat e não confunde o atendente
+         * sobre quem enviou a mensagem.
+         */
+        // Buscando informações do cliente.
+        const customer = await this.cacheService.customer.find({
+          field: 'customerId',
+          value: transaction.customerId,
+        });
+        this.sendMessage(
+          attendant.wuid,
+          {
+            extendedTextMessage: {
+              text: this.formatText(`*Protocolo: ${transaction.protocol}*
+              *Cliente:* ${customer.name}
+              *Id do cliente:* ${customer.customerId}`),
+            },
+          },
+          { delay: 500, quoted },
+        );
+      },
+    );
 
     return transaction;
   }
@@ -610,7 +656,6 @@ export class ManageService {
     if (!selected) {
       return false;
     }
-    // wuid => whatsapp unique identifier
     const wuid = received.key.remoteJid;
     // Buscando transação selecionada.
     const transaction = await this.cacheService.transaction.find({
@@ -650,20 +695,34 @@ export class ManageService {
         const subject: proto.IWebMessageInfo[] = JSON.parse(
           transaction.subject as string,
         );
-        this.sendMessage(
+        await this.sendMessage(
           wuid,
-          { extendedTextMessage: { text: '*ASSUNTO*' } },
+          {
+            extendedTextMessage: {
+              text: '*ASSUNTO INFORMADO PELO CLIENTE*',
+            },
+          },
           { delay: 1500 },
         );
         for await (const message of subject) {
-          await this.sendMessage(wuid, message.message);
+          await this.sendMessage(wuid, message.message, { delay: 100 });
         }
+        // Informando que o assunto foi finalizado.
+        await this.sendMessage(
+          wuid,
+          {
+            extendedTextMessage: {
+              text: '*FINALIZAÇÃO DO ASSUNTO*',
+            },
+          },
+          { delay: 1000 },
+        );
         // Enviando mensagem para o atendente, informando que o chat já está vinculado.
         this.sendMessage(
           wuid,
           {
             extendedTextMessage: {
-              text: 'Ótimo!\nVocê já pode conversar com o cliente.',
+              text: 'Ótimo!\nAgora, você já pode iniciar o atendimento!',
             },
           },
           { delay: 1200 },
@@ -678,8 +737,8 @@ export class ManageService {
           customer.wuid,
           {
             extendedTextMessage: {
-              text: this.removeSpaces(
-                `Olá ${customer.name}! Meu nome é ${releaseAttendant.shortName} e irei realizar o seu atendimento.
+              text: this.formatText(
+                `Olá *${customer.name}*! O meu nome é *${releaseAttendant.shortName}* e irei realizar o seu atendimento.\n
                 Já estou analizando o seu assunto, me aguarde um momento!`,
               ),
             },
@@ -705,7 +764,7 @@ export class ManageService {
     }
 
     // Buscando dados do atendente.
-    const attendant = this.cacheService.attendant.find({
+    const attendant = await this.cacheService.attendant.find({
       field: 'wuid',
       value: wuid,
     });
@@ -741,11 +800,33 @@ export class ManageService {
     }
   }
 
+  // Checando horário de funcionamento.
+  private checkOperation() {
+    // Pegando o dia da semana.
+    const day = dayjs().day() as Weekday;
+    // Pegando a hora atual.
+    const hour = dayjs().hour();
+    const operation = this.callCenter.operation;
+    // Verificando se é um dia de funcionamento.
+    if (!operation.weekday.includes(day)) {
+      return false;
+    }
+    // Verificando o orário do expediente.
+    if (hour < operation.open || hour > operation.closed) {
+      return false;
+    }
+
+    return true;
+  }
+
   public async messageManagement(received: proto.IWebMessageInfo) {
     if (received.key.fromMe) {
       return;
     }
 
+    /**
+     * @wuid -> whatsapp unique identifier
+     */
     const wuid = received.key.remoteJid;
 
     // Carregando variável que contém as informações do call center.
@@ -760,10 +841,46 @@ export class ManageService {
 
     // Verificando se o remetente da mensagem é um atendente.
     const attendant = this.cacheService.attendant.getAttendant(wuid);
-
+    // Não sendo...
     if (!attendant) {
       // Carregando cliente
       const customer = await this.loadCustomer(received);
+      // Verificando expediente
+      if (this.checkOperation() === false) {
+        const operation = this.callCenter.operation;
+        this.sendMessage(
+          wuid,
+          {
+            templateMessage: {
+              hydratedTemplate: {
+                templateId: '01',
+                hydratedTitleText: `Olá ${customer.name}, ${timeDay(
+                  dayjs().hour(),
+                ).toLowerCase()}😉!`,
+                hydratedContentText: this.formatText(
+                  `A nossa equipe 🤝🏼 agradece a sua mensage!
+                  No momento nós não estamos disponíveis🙂!\n
+                  Nosso horário de funcionamento é das *${operation.open}h* às *${operation.closed}h*` +
+                    `${operation?.desc ? 'de ' + operation.desc : '.'}\n
+                    Para mais informações, acesse a nossa página!`,
+                ),
+                hydratedFooterText: this.callCenter.botName.toLowerCase(),
+                hydratedButtons: [
+                  {
+                    index: 0,
+                    urlButton: {
+                      displayText: this.callCenter.companyName,
+                      url: this.callCenter.url,
+                    },
+                  },
+                ],
+              },
+            },
+          },
+          { delay: 2000 },
+        );
+        return;
+      }
 
       // Verificando usuario e seu estagio
       if (customer) {
@@ -787,7 +904,7 @@ export class ManageService {
       }
     } else {
       /**
-       * Caso a verificação do clieque do botão do atendente, retorne false, executamos
+       * Caso a verificação do clieque do botão do atendente retorne false, executamos
        * a função transactionAttendant.
        */
       (await this.checkAcceptance(received)) === false
