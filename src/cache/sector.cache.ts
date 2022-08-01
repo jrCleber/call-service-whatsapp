@@ -13,8 +13,15 @@ export class SectorCache {
   // Criando um observer simples para carregar os setores a cada minuto.
   private snapshot() {
     setInterval(async () => {
-      const sectors = await this.prismaService.companySector.findMany();
-      this.cache.set(SectorCache.name, [...sectors]);
+      const sectors = await this.prismaService.attendant.findMany({
+        distinct: 'companySectorId',
+        select: {
+          CompanySector: true,
+        },
+      });
+      this.cache.set(SectorCache.name, [
+        ...sectors.map(({ CompanySector }) => CompanySector),
+      ]);
     }, 1000);
   }
 

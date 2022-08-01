@@ -132,7 +132,6 @@ export class CustomerCache {
     const customertRemoved = customers.splice(index, 1);
     // Reinserindo lista no cache.
     this.cache.set(CustomerCache.name, [...customers]);
-
     // Retornando cliente removido.
     return customertRemoved;
   }

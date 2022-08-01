@@ -20,6 +20,7 @@ export type Attendant = {
 type Query = {
   field: keyof Attendant;
   value: number | string | AttendantStatus;
+  sectorId?: number;
 };
 
 export class AttendantCache {
@@ -50,17 +51,23 @@ export class AttendantCache {
     // Recuperando a referência da lista de atendentes no cache.
     const attendants = this.cache.get<Attendant[]>(AttendantCache.name) || [];
     // Atribuindo atendente selecionado à uma variável.
-    const attendant = attendants.find((a) => a[where.field] === where.value);
+    const attendant = attendants.find((a) => {
+      if (where?.sectorId) {
+        return a[where.field] === where.value && a.companySectorId === where.sectorId;
+      } else {
+        return a[where.field] === where.value;
+      }
+    });
     // Verificando se o atendente existe,
     if (!attendant) {
       // const findAttendant = await this.prismaService.attendant.findUnique({
-      //   where: { [where.field]: where.value as number },
+      //   where: { [where.field]: where.value as any },
       // });
       const findAttendant = await this.prismaService.attendant.findFirst({
-        where: { [where.field]: where.value as number },
+        where: { [where.field]: where.value as number, companySectorId: where?.sectorId },
       });
-      attendants.push(findAttendant),
-        this.cache.set(AttendantCache.name, [...attendants]);
+      attendants.push(findAttendant);
+      this.cache.set(AttendantCache.name, [...attendants]);
       return findAttendant;
     }
 
@@ -68,23 +75,9 @@ export class AttendantCache {
     return attendant;
   }
 
-  public async set({ where }: Prisma.AttendantFindFirstArgs) {
-    // Buscando atendente no banco.
-    const attendant = await this.prismaService.attendant.findFirst({ where });
-    // Buscando lista de atendentes no cache, se houver, se não, iniciamos com um array vazio.
-    const attendants = this.cache.get<Attendant[]>(AttendantCache.name) || [];
-    // Recuperando o index do atendente.
-    const index = attendants.indexOf(attendant);
-    if (!index) {
-      // Inserindo atendente no array.
-      attendants.push(attendant);
-      // Reinserindo atendentes no cache.
-      this.cache.set(AttendantCache.name, attendants);
-      // Retornando atendente selecionado.
-      return attendant;
-    }
-
-    return attendant;
+  // Buscando no banco de dados o atendente disponível.
+  public async realise({ where }: Prisma.AttendantFindFirstArgs) {
+    return await this.prismaService.attendant.findFirst({ where });
   }
 
   public async remove(del: Query) {

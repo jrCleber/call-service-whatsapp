@@ -81,7 +81,6 @@ export class TransactionCache {
     const transaction = transactions.find(
       (t) => t.status === where.status && t[where.field] === where.value,
     );
-
     // Não existindo:
     if (!transaction || Object.keys(transaction).length === 0) {
       // buscamos a transação no bando
@@ -151,7 +150,11 @@ export class TransactionCache {
 
   public async remove(del: Query) {
     // Recuperando o cliente.
-    const transaction = await this.find({ field: del.field, value: del.value });
+    const transaction = await this.find({
+      field: del.field,
+      value: del.value,
+      status: del.status,
+    });
     // Recuperando o array de clientes no cache.
     const transactions = this.cache.get<Transaction[]>(TransactionCache.name);
     // Recuperando o index do atendente a ser removido.
@@ -159,7 +162,7 @@ export class TransactionCache {
     // Atribuindo atendente removido à uma variável e removendo atendente da lista.
     const transactiontRemoved = { ...transactions.splice(index, 1) };
     // Reinserindo o array no cache.
-    this.cache.set(TransactionCache.name, transactions);
+    this.cache.set(TransactionCache.name, [...transactions]);
     // Retornando cliente removido.
     return transactiontRemoved;
   }
