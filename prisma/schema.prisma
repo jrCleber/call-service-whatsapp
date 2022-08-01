@@ -47,7 +47,7 @@ model Customer {
   Tansaction        Transaction[]
   ChatStage         ChatStage?
 
-  // @@unique([wuid, phoneNumber])
+  @@unique([wuid, phoneNumber])
 }
 
 model Attendant {
@@ -67,7 +67,7 @@ model Attendant {
   callCenterId    Int             @db.Int
   Tansaction      Transaction[]
 
-  // @@unique([wuid, email, phoneNumber])
+  @@unique([wuid, email, phoneNumber])
 }
 
 enum AttendantStatus {
