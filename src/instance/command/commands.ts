@@ -99,6 +99,17 @@ export class Commands {
       { stage: 'finishedChat' },
     );
 
+    // Deletando variáveis do cache.
+    this.cacheService.customer.remove({
+      field: 'customerId',
+      value: transaction.customerId,
+    });
+    this.cacheService.attendant.remove({
+      field: 'attendantId',
+      value: transaction.attendantId,
+    });
+    this.cacheService.chatStage.remove({ wuid: customer.wuid });
+
     // Enviando mensagem para o atendente.
     const attendant = await this.cacheService.attendant.find({
       field: 'attendantId',

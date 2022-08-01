@@ -202,7 +202,7 @@ export class ManageService {
       stage: 'setName',
       customerId: id,
     });
-    // Iniciando um protocolo.
+    // Iniciando uma transação.
     await this.cacheService.transaction.create({
       initiated: Date.now().toString(),
       customerId: id,
@@ -307,7 +307,7 @@ export class ManageService {
       .catch((error) =>
         this.logger.error({
           local: ManageService.name + '.' + ManageService.prototype.setName.name,
-          message: `Could not update transaction id: ${transaction.transactionId}`,
+          message: 'There was an error sending the list.',
           ...error,
         }),
       );
@@ -369,6 +369,7 @@ export class ManageService {
         transaction = await this.cacheService.transaction.find({
           field: 'transactionId',
           value: Number.parseInt(selectedId.transaction),
+          status: 'ACTIVE',
         });
       }
     }
@@ -548,26 +549,35 @@ export class ManageService {
         sectorId: transaction.sectorId || sectorId,
         status: { notIn: 'PROCESSING' },
       },
+      select: { attendantId: true },
     });
+    this.logger.log({ MQ_T: transactions });
     // Declarando variável que armazenará o atendente dispon´vel.
     let releaseAttendant: Attendant;
     // Caso todos os atendentes do setor estivem disponíveis, atribuímos o primeiro.
     if (!transactions.find((t) => t.attendantId)) {
-      releaseAttendant = await this.cacheService.attendant.set({
+      releaseAttendant = await this.cacheService.attendant.realise({
         where: { companySectorId: transaction.sectorId },
       });
+      this.logger.log({ if: releaseAttendant });
     } else {
+      // recuperando atendentes em atendimento.
+      const inAttendance: number[] = [];
+      transactions.forEach((t) => {
+        if (t?.attendantId) return inAttendance.push(t.attendantId);
+      });
       /**
        * Caso não:
        *  └> buscamos na tabela attendant, o primeiro atendente disponível para o setor
        *     selecionado.
        */
-      releaseAttendant = await this.cacheService.attendant.set({
+      releaseAttendant = await this.cacheService.attendant.realise({
         where: {
-          attendantId: { notIn: [...new Set(transactions.map((t) => t.attendantId))] },
+          attendantId: { notIn: [...inAttendance] },
           companySectorId: transaction.sectorId,
         },
       });
+      this.logger.log({ else: releaseAttendant });
     }
 
     // Buscando o usuáro relacionado à transação.
@@ -576,7 +586,14 @@ export class ManageService {
       value: transaction.customerId,
     });
 
-    this.serviceRequest(transaction, customer, releaseAttendant);
+    /**
+     * Verificando se existe atendente disponível, caso não, o cliente aguardará
+     * até que um atendente, do setor solicitado, finalize um atendimento.
+     */
+    if (releaseAttendant) {
+      this.serviceRequest(transaction, customer, releaseAttendant);
+      return;
+    }
 
     return;
   }
@@ -589,6 +606,7 @@ export class ManageService {
     const transaction = await this.cacheService.transaction.find({
       field: 'customerId',
       value: id,
+      status: 'PROCESSING',
     });
 
     // Buscando atendente.
@@ -623,7 +641,7 @@ export class ManageService {
           extendedTextMessage: {
             text: this.formatText(`*Protocolo: ${transaction.protocol}*
             *Situação:* cancelado pelo cliente;
-            *Status:* ${transaction.status}
+            *Status:* FINISHED
             *Data/Hora:* ${formatDate(Date.now().toString())}`),
           },
         });
@@ -642,6 +660,7 @@ export class ManageService {
       this.cacheService.transaction.remove({
         field: 'transactionId',
         value: transaction.transactionId,
+        status: 'FINISHED',
       });
 
       return;
@@ -712,13 +731,18 @@ export class ManageService {
     const transaction = await this.cacheService.transaction.find({
       field: 'transactionId',
       value: Number.parseInt(selected?.transaction),
+      status: 'ACTIVE',
     });
     // Buscando informações do cliente.
     const customer = await this.cacheService.customer.find({
       field: 'customerId',
       value: transaction.customerId,
     });
-    const attendant = this.cacheService.attendant.getAttendant(wuid);
+    const attendant = await this.cacheService.attendant.find({
+      field: 'wuid',
+      value: wuid,
+      sectorId: transaction.sectorId,
+    });
     // Verificando se o atendente aceitou a solicitação.
     if (selected?.action === 'accept') {
       // Verificando se a solicitação não foi atendida por outro atendente.
@@ -735,15 +759,11 @@ export class ManageService {
 
         return;
       } else {
-        // Atribuindo todas as informações do atendente no cache.
-        const releaseAttendant = await this.cacheService.attendant.set({
-          where: { attendantId: attendant.attendantId },
-        });
         // Atualizando transação com o id do atendente.
         this.cacheService.transaction.update(
           { field: 'transactionId', value: transaction.transactionId },
           {
-            attendantId: releaseAttendant.attendantId,
+            attendantId: attendant.attendantId,
             startProcessing: Date.now().toString(),
             status: 'PROCESSING',
           },
@@ -790,7 +810,7 @@ export class ManageService {
           {
             extendedTextMessage: {
               text: this.formatText(
-                `Olá *${customer.name}*! O meu nome é *${releaseAttendant.shortName}* e irei realizar o seu atendimento.\n
+                `Olá *${customer.name}*! O meu nome é *${attendant.shortName}* e irei realizar o seu atendimento.\n
                 Já estou analizando o seu assunto, me aguarde um momento!`,
               ),
             },
@@ -810,7 +830,7 @@ export class ManageService {
     let releaseAttendant: Attendant;
     // Caso todos os atendentes do setor estivem disponíveis, atribuímos o primeiro.
     if (!transactions.find((t) => t.attendantId)) {
-      releaseAttendant = await this.cacheService.attendant.set({
+      releaseAttendant = await this.cacheService.attendant.realise({
         where: { companySectorId: transaction.sectorId },
       });
     } else {
@@ -819,7 +839,7 @@ export class ManageService {
        *  └> buscamos na tabela attendant, o primeiro atendente disponível para o setor
        *     selecionado.
        */
-      releaseAttendant = await this.cacheService.attendant.set({
+      releaseAttendant = await this.cacheService.attendant.realise({
         where: {
           attendantId: { notIn: [...new Set(transactions.map((t) => t.attendantId))] },
           companySectorId: transaction.sectorId,
@@ -909,7 +929,7 @@ export class ManageService {
     const operation = this.callCenter.operation;
     // Verificando se é um dia de funcionamento.
     if (
-      operation.weekday.includes(day) ||
+      !operation.weekday.includes(day) ||
       hour < operation.open ||
       hour > operation.closed
     ) {
@@ -981,7 +1001,10 @@ export class ManageService {
           : undefined;
     }
     // Buscando atendente.
-    const attendant = await this.cacheService.attendant.set({ where: { wuid } });
+    const attendant = await this.cacheService.attendant.find({
+      field: 'wuid',
+      value: wuid,
+    });
     // Verificando se a referêcia da função de comado é verdadeira.
     if (this.commands[textCommand.text]) {
       this.commands.setInstance = this.instance;
@@ -1020,9 +1043,9 @@ export class ManageService {
       // Carregando cliente
       const customer = await this.loadCustomer(received);
       // Verificando expediente
-      // if (this.checkOperation(wuid, customer.name) === false) {
-      //   return;
-      // }
+      if (this.checkOperation(wuid, customer.name) === false) {
+        return;
+      }
 
       // Verificando usuario e seu estagio
       if (customer) {

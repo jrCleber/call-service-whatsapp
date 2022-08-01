@@ -134,7 +134,6 @@ export class InstanceWA {
       printQRInTerminal: true,
       msgRetryCounterMap: {},
       linkPreviewImageThumbnailWidth: 1600,
-      markOnlineOnConnect: false,
       browser,
       version,
       connectTimeoutMs: 60_000,
