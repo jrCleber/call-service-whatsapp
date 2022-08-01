@@ -14,20 +14,20 @@ import { TransactionCache } from './cache/transaction.cache';
 import NodeCache from 'node-cache';
 import { Commands } from './instance/command/commands';
 
-// Instanciando dependências.
+// Instantiating dependencies.
 const eventemitter2 = new EventEmitter2(EVENT_EMITTER_CONFIG);
 const prismaService = new PrismaService();
 const configService = new ConfigService<Env>(LOADENV);
 const cache = new NodeCache({ checkperiod: 0 });
 
-// Instanciando caches e injeando dependências.
+// Instantiating caches and injecting dependencies.
 const stageCache = new StageCache(prismaService, cache);
 const attendantCache = new AttendantCache(prismaService, cache);
 const customerCache = new CustomerCache(prismaService, cache);
 const sectorCache = new SectorCache(prismaService, cache);
 const transactionCache = new TransactionCache(prismaService, cache);
 
-// Instanciando serviço de chace e injetando dependências.
+// Instantiating chace service and injecting dependencies.
 const cacheService = new CacheService(
   prismaService,
   customerCache,
@@ -37,13 +37,13 @@ const cacheService = new CacheService(
   transactionCache,
 );
 
-// Instanciando dependência Comando.
+// Instantiating dependency Command.
 const commands = new Commands(cacheService, prismaService);
 
-// Instanciando gerenciado de atendimento e injetando dependência.
+// Instantiating service manager and injecting dependency.
 const manageService = new ManageService(cacheService, commands, prismaService);
 
-// Instanciando serviço de inicialização e injetando suas dependências.
+// Instantiating startup service and injecting its dependencies.
 const startupService = new StartupService(
   eventemitter2,
   prismaService,
@@ -51,5 +51,5 @@ const startupService = new StartupService(
   manageService,
 );
 
-// Exportando serviço de inicialização.
+// Exporting startup service.
 export { startupService };

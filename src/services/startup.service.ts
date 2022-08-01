@@ -27,7 +27,7 @@ export class StartupService {
   private readonly logger = new Logger(StartupService.name);
   public readonly startedInstance: Record<string, InstanceWA> = {};
 
-  // carregando instância
+  // Loading instance.
   public async loadInstance({ instanceKey }: PayloadEvent) {
     const instanceWA = new InstanceWA(
       this.prismaService,
@@ -35,11 +35,11 @@ export class StartupService {
       this.eventEmitter2,
       this.manageService,
     );
-    // Setando a propriedade que armazena o nome da instância.
+    // Setting the property that stores the instance name.
     instanceWA.instanceKey = instanceKey;
-    // Realizando a conexão.
+    // Making the connection.
     await instanceWA.connectToWatsapp();
-    // Tornando instância disponível en toda a classe.
+    // Making instance available throughout the class.
     this.startedInstance[instanceKey] = instanceWA;
   }
 
@@ -52,11 +52,11 @@ export class StartupService {
   private removeInstance() {
     this.eventEmitter2.on('remove.instance', async ({ instanceKey }: PayloadEvent) => {
       try {
-        // Removendo o diretório da instância.
+        // Removing the instance directory.
         rmSync(join(INSTANCE_DIR, instanceKey), { recursive: true, force: true });
         // Removendo eventos registrados.
         this.removeEvents(this.startedInstance[instanceKey]?.client?.ev);
-        // Deletando instância nda memória.
+        // Deleting instance from memory.
         delete this.startedInstance[instanceKey];
 
         this.logger.warn(`Instance: ${instanceKey} - REMOVED`);
@@ -70,19 +70,19 @@ export class StartupService {
     });
   }
 
-  // Quando o usuário não se conecta.
+  // When the user does not connect.
   private noConnection() {
     this.eventEmitter2.on('no.connection', ({ instanceKey }: PayloadEvent) => {
       try {
-        // Removendo eventos registrados.
+        // Removing logged events.
         this.removeEvents(this.startedInstance[instanceKey]?.client?.ev);
-        // Finalizando a conexão.
+        // Terminating the connection.
         this.startedInstance[instanceKey].client.end(
           new Boom('QR code limit reached, please login again', {
             statusCode: DisconnectReason.badSession,
           }),
         );
-        // Deletando instância da memória.
+        // Deleting instance from memory.
         delete this.startedInstance[instanceKey];
       } catch (error) {
         this.logger.error({

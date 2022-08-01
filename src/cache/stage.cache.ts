@@ -21,20 +21,20 @@ export class StageCache {
   private readonly logger = new Logger(StageCache.name);
 
   public async create(data: ChatStage) {
-    // Verificando se já existe um estágio gerado para esse cliente.
+    // Checking if a stage already exists generated for this client.
     let chatStage = this.cache.get<ChatStage>(data.wuid);
     if (!chatStage) {
       /**
-       * Não existindo:
-       * ├> criamos o estágio no banco de dados;
-       * └> inserimos o estágio no cache.
+       * Not existing:
+       * ├> we create the stage in the database;
+       * └> we insert the stage into the cache.
        */
       chatStage = await this.prismaService.chatStage.upsert({
         where: { wuid: data.wuid },
         create: { wuid: data.wuid, stage: data.stage, customerId: data.customerId },
         update: { stage: data.stage },
       });
-      // Inserinfo estágio do cliente no cache.
+      // Insert client stage into cache.
       this.cache.set(chatStage.wuid, chatStage.stage);
     }
 
@@ -43,16 +43,16 @@ export class StageCache {
 
   public update(where: Pick<ChatStage, 'wuid'>, data: ChatStage) {
     let stage: Stages;
-    // Atualizando estágio.
+    // Updating stage.
     for (const [_, value] of Object.entries(data)) {
       if (value) {
         stage = value as Stages;
         break;
       }
     }
-    // Reinserindo estágio no cache.
+    // Reinserting stage into cache.
     this.cache.set(where.wuid, stage);
-    // Atualizando estágio no banco de dados.
+    // Updating stage in database.
     this.prismaService.chatStage
       .update({
         where: { ...where },
@@ -71,22 +71,22 @@ export class StageCache {
   }
 
   public async find(where: Pick<ChatStage, 'wuid'>) {
-    // Recuperando referência do estágio na memória.
+    // Retrieving stage reference in memory.
     let stage = this.cache.get<Stages>(where.wuid);
-    // Não existindo:
+    // Not existing:
     if (!stage) {
-      // buscamos esse estágio no banco.
+      // We seek this internship at the bank.
       const chatStage = await this.prismaService.chatStage.findUnique({
         where: { wuid: where.wuid },
         select: { stage: true, wuid: true },
       });
-      // Existindo:
+      // Eexisting:
       if (chatStage) {
-        // inserimos estágio do cliente no cache se a condição for satisfeita;
+        // insert client stage into cache if condition is satisfied;
         chatStage.stage !== 'finishedChat'
           ? this.cache.set(chatStage.wuid, chatStage.stage)
           : undefined;
-        // Atribuimos o valor do estágio na variável.
+        // We assign the stage value to the variable.
         stage = chatStage.stage;
       }
     }
@@ -95,7 +95,7 @@ export class StageCache {
   }
 
   public remove(where: Pick<ChatStage, 'wuid'>) {
-    // Removendo estágio do cache.
+    // Removing cache stage.
     this.cache.del(where.wuid);
   }
 }

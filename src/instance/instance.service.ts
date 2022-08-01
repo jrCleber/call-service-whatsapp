@@ -107,25 +107,25 @@ export class InstanceWA {
   }
 
   public async connectToWatsapp() {
-    // Verificando se a instância está connectada
+    // Checking if the instance is connected.
     if (this.instance.connectionStatus === 'open') {
       this.logger.warn('You are already connected to this instance');
       return true;
     }
-    // Iniciando a authenticação e conexão com o whatsapp
+    // Starting connection authentication with whatsapp.
     this.instance.authState = await useMultiFileAuthState(
       join(INSTANCE_DIR, this.instance.instanceKey),
     );
 
     const { version, isLatest } = await fetchLatestBaileysVersion();
-    // Configurando como será exibido a conexão noaprelho.
+    // Configuring how the connection will be displayed on the device.
     const browser: WABrowserDescription = [
       this.env.BROWSER.CLIENT,
       this.env.BROWSER.NAME,
       release(),
     ];
     /**
-     * Inserindo as configurações para a conexão.
+     * Entering the settings for the connection.
      * https://github.com/adiwajshing/Baileys#configuring-the-connection
      */
     const socketConfig: UserFacingSocketConfig = {
@@ -153,26 +153,26 @@ export class InstanceWA {
     ev.on('messages.upsert', ({ messages, type }) => {
       const received = messages[0];
       /**
-       * verificando se a mensagem recebida é do tipo de notificação
-       * e se a propriedade mensagem não é nula
+       * checking if the received message is of notification type
+       * and if the message property is not null
        */
       if (type !== 'notify' || !received?.message) {
         return;
       }
-      // Verificando se a mensagem é do tipo reaction.
+      // Checking if the message is of type reaction.
       const keys = Object.keys(received.message);
       if (keys.includes('reactionMessage')) {
         return;
       }
-      // ignorando mensagens de grupo
+      // Ignoring group messages.
       if (isJidGroup(received.key.remoteJid)) {
         return;
       }
-      // mostrando mensagem recebida no console
-      this.logger.log({ type, messgage: { ...received } });
-      // setanso cliente em manageService
+      // Showing received message on console
+      this.logger.log({ type, messgage: received });
+      // Seating client in manager Service.
       this.manageService.client = this.instance;
-      // iniciando o precessador de mensagens
+      // Starting the processor of messages.
       messageProcessing(
         {
           received,
@@ -183,7 +183,7 @@ export class InstanceWA {
             'status@broadcast',
           ],
         },
-        // iniciando gerenciador de mensagens
+        // Starting message manager.
         async (received) => await this.manageService.messageManagement(received),
       );
     });
@@ -207,11 +207,11 @@ export class InstanceWA {
   }
 
   private setHandles() {
-    // Realizando a conexão
+    // Making the connection.
     this.connectionUpdate();
-    // setando iniciador de mensagens
+    // Setting message initiator.
     this.messageHandle(this.instance.client.ev);
-    // salvando e atualizando as credenciais de conexão
+    // Saving and updating connection credentials.
     this.instance.client.ev.on('creds.update', this.instance.authState.saveCreds);
   }
 }

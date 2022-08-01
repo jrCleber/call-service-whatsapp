@@ -1,10 +1,10 @@
-// Importnado servicço de inicialização.
+// Importing startup service.
 import { startupService } from './app.module';
-// Atribuindo o nome para à instância.
+// Assigning the name to the instance.
 const instanceKey = 'codechat';
 /**
- * Carregando instância:
- *  ├> se a instância não existir, ela será criada e o qrcode emitido no terminal;
- *  └> se não, a instância criada será carregada na memória e disponibilizada.
+ * Loading instance:
+ * ├> if the instance does not exist, it will be created and the qrcode emitted in the terminal;
+ * └> if not, the created instance will be loaded into memory and made available.
  */
 startupService.loadInstance({ instanceKey });

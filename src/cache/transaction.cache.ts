@@ -38,33 +38,31 @@ export class TransactionCache {
   private readonly logger = new Logger(TransactionCache.name);
 
   public async create(data: Transaction) {
-    // Recuperando todas as transações no cache.
+    // Retrieving all transactions in the cache.
     const transactions = this.cache.get<Transaction[]>(TransactionCache.name) || [];
-    // Verificando se a transação a ser criada já existe
+    // Checking if the transaction to be created already exists.
     const find = transactions.find((t) => t?.customerId === data?.customerId);
     if (!find || Object.keys(find).length === 0) {
-      // Verificando se a transação existe no banco.
+      // Checking if the transaction exists in the bank.
       const transaction = await this.prismaService.transaction.findFirst({
         where: { customerId: data?.customerId, status: { in: ['ACTIVE', 'PROCESSING'] } },
       });
-      // Existindo:
+      // Existing:
       if (transaction) {
-        // a inserimos no array;
+        // we insert it into the array;
         transactions.push(transaction);
-        // e reinserimos o array no cache.
+        // and we reinsert the array into the cache.
         this.cache.set(TransactionCache.name, transactions);
-        // Zerando lista.
-        transactions.length = 0;
 
         return transaction;
       }
-      // Não existindo, criamos uma transação no banco.
+      // If it doesn't exist, we create a transaction in the bank.
       const transactionCreate = await this.prismaService.transaction.create({
         data: { ...data } as Prisma.TransactionCreateInput,
       });
-      // Inserimos a transação no array.
+      // We insert the transaction into the array.
       transactions.push(transactionCreate);
-      // E reinserimos o array no cache.
+      // And we reinsert the array into the cache.
       this.cache.set(TransactionCache.name, transactions);
 
       return transactionCreate;
@@ -75,23 +73,23 @@ export class TransactionCache {
     where: Query,
     select?: Prisma.TransactionSelect,
   ): Promise<Transaction> {
-    // Recuperando a referencia do array de transações no cache.
+    // Retrieving the transaction array reference from the cache.
     const transactions = this.cache.get<Transaction[]>(TransactionCache.name) || [];
-    // Buscando transação no array.
+    // Fetching transaction in array.
     const transaction = transactions.find(
       (t) => t.status === where.status && t[where.field] === where.value,
     );
-    // Não existindo:
+    // Not existing:
     if (!transaction || Object.keys(transaction).length === 0) {
-      // buscamos a transação no bando
+      // we fetch the transaction in the database
       const transactionDb = await this.prismaService.transaction.findFirst({
         where: { [where.field]: where.value, status: where.status },
         select,
       });
       if (transactionDb) {
-        // iserimos transação no array;
+        // we insert transaction in the array;
         transactions.push(transactionDb);
-        // reinserimos o array no cache.
+        // we reinsert the array into the cache.
         this.cache.set(TransactionCache.name, transactions);
 
         return transactionDb;
@@ -105,7 +103,7 @@ export class TransactionCache {
     { where }: Prisma.TransactionFindManyArgs,
     select?: Prisma.TransactionSelect,
   ) {
-    // Recuperando do banco uma lista com uma query específica.
+    // Retrieving from the database a list with a specific query.
     return (await this.prismaService.transaction.findMany({
       where,
       select,
@@ -113,13 +111,13 @@ export class TransactionCache {
   }
 
   public async update(update: Query, data: Transaction): Promise<Transaction> {
-    // Recuperando a referencia do array de transações no cache.
+    // Retrieving the transaction array reference from the cache.
     const transactions = this.cache.get<Transaction[]>(TransactionCache.name);
-    // Buscando transação a ser atualizada.
+    // Fetching transaction to be updated.
     const transaction = transactions.find((t) => t[update.field] === update.value);
-    // Recuperando o index desta transação.
+    // Retrieving the index of this transaction.
     const index = transactions.indexOf(transaction);
-    // Realizando atualização para o cache.
+    // Performing update to cache.
     for (const [key, value] of Object.entries(data)) {
       if (value) {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -127,11 +125,11 @@ export class TransactionCache {
         transaction[key] = value;
       }
     }
-    // Reinserindo transação no array.
+    // Reinserting transaction into array.
     transactions[index] = transaction;
-    // Reinserindo array no cache.
+    // Reinserting array into cache.
     this.cache.set(TransactionCache.name, transactions);
-    // Atualizando transação no banco.
+    // Updating transaction in the database.
     this.prismaService.transaction
       .update({
         where: { [update.field]: update.value },
@@ -144,26 +142,26 @@ export class TransactionCache {
           error,
         }),
       );
-    // Retornando transação atualizada.
+    // Returning updated transaction.
     return transaction;
   }
 
   public async remove(del: Query) {
-    // Recuperando o cliente.
+    //Retrieving the transaction.
     const transaction = await this.find({
       field: del.field,
       value: del.value,
       status: del.status,
     });
-    // Recuperando o array de clientes no cache.
+    // Retrieving the array of transactions in the cache.
     const transactions = this.cache.get<Transaction[]>(TransactionCache.name);
-    // Recuperando o index do atendente a ser removido.
+    // Retrieving the index of the listener to be removed.
     const index = transactions.indexOf(transaction);
-    // Atribuindo atendente removido à uma variável e removendo atendente da lista.
+    // AAssigning removed transaction to a variable and removing the transaction from the list.
     const transactiontRemoved = { ...transactions.splice(index, 1) };
-    // Reinserindo o array no cache.
+    // Reinserting the array into the cache.
     this.cache.set(TransactionCache.name, [...transactions]);
-    // Retornando cliente removido.
+    // Returning removed transaction.
     return transactiontRemoved;
   }
 }

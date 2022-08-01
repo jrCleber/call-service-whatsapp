@@ -48,9 +48,9 @@ export class AttendantCache {
   }
 
   public async find(where: Query) {
-    // Recuperando a referência da lista de atendentes no cache.
+    // Retrieving the list of listeners reference from the cache.
     const attendants = this.cache.get<Attendant[]>(AttendantCache.name) || [];
-    // Atribuindo atendente selecionado à uma variável.
+    // Assigning selected attendant to a variable.
     const attendant = attendants.find((a) => {
       if (where?.sectorId) {
         return a[where.field] === where.value && a.companySectorId === where.sectorId;
@@ -58,11 +58,8 @@ export class AttendantCache {
         return a[where.field] === where.value;
       }
     });
-    // Verificando se o atendente existe,
+    // Checking if the attendant exists.
     if (!attendant) {
-      // const findAttendant = await this.prismaService.attendant.findUnique({
-      //   where: { [where.field]: where.value as any },
-      // });
       const findAttendant = await this.prismaService.attendant.findFirst({
         where: { [where.field]: where.value as number, companySectorId: where?.sectorId },
       });
@@ -71,27 +68,27 @@ export class AttendantCache {
       return findAttendant;
     }
 
-    // Retornando attendente selecionado.
+    // Returning selected attendant.
     return attendant;
   }
 
-  // Buscando no banco de dados o atendente disponível.
+  // Searching the database for the available attendant.
   public async realise({ where }: Prisma.AttendantFindFirstArgs) {
     return await this.prismaService.attendant.findFirst({ where });
   }
 
   public async remove(del: Query) {
-    // Buscando o atendente a ser removido.
+    // Fetching the attendant to be removed.
     const attendant = await this.find({ field: del.field, value: del.value });
-    // Buscando a lista de atendentes.
+    // Fetching the list of attendants.
     const attendants = this.cache.get<Attendant[]>(AttendantCache.name);
-    // Recuperando o index do atendente a ser removido.
+    // Retrieving the index of the listener to be removed.
     const index = attendants.indexOf(attendant);
-    // Atribuindo atendente removido à uma variável e removendo atendente da lista.
+    // Assigning removed attendant to a variable and removing attendant from the list.
     const attendantRemoved = { ...attendants.splice(index, 1) };
-    // Reinserindo lista no cache.
+    // Reinserting list into cache.
     this.cache.set(AttendantCache.name, attendants);
-    // Retornando o atendente removido.
+    // Returning the removed attendant.
     return attendantRemoved;
   }
 }

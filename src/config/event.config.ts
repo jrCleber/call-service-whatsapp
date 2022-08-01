@@ -1,4 +1,4 @@
-import EventEmitter2, { ConstructorOptions } from 'eventemitter2';
+import { ConstructorOptions } from 'eventemitter2';
 
 export const EVENT_EMITTER_CONFIG: ConstructorOptions = {
   delimiter: '.',

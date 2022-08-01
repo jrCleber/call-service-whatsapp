@@ -10,7 +10,7 @@ export class SectorCache {
     this.snapshot();
   }
 
-  // Criando um observer simples para carregar os setores a cada minuto.
+  // Creating a simple observer to load the sectors every minute.
   private snapshot() {
     setInterval(async () => {
       const sectors = await this.prismaService.attendant.findMany({
@@ -26,10 +26,10 @@ export class SectorCache {
   }
 
   public async findMany() {
-    // Recuperando todos os setores do cahce.
+    // Retrieving all sectors from the cache.
     let sectors = this.cache.get<CompanySector[]>(SectorCache.name) || [];
     if (sectors.length === 0) {
-      // Buscando todos os setores onde existem atendentes vinculados.
+      // Searching all sectors where there are linked attendants.
       const findSectors = await this.prismaService.attendant.findMany({
         distinct: 'companySectorId',
         select: {

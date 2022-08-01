@@ -31,21 +31,21 @@ export class CustomerCache {
   private readonly logger = new Logger(CustomerCache.name);
 
   public async create(data: Customer) {
-    // Recuperando a referência da lista de clientes no cache.
+    // Retrieving the client list reference from the cache.
     const customers = this.cache.get<Customer[]>(CustomerCache.name) || [];
-    // Verificando se o cliente já existe no cache.
+    // Checking if the client already exists in the cache.
     const customer = customers.find(
       (c) => c?.wuid === data?.wuid || c?.customerId === data?.customerId,
     );
-    // Não existindo:
+    // Not existing:
     if (!customer || Object.keys(customer).length === 0) {
-      // criamos um cliente no banco de dados;
+      // create a customer in the database;
       const customerCreate = await this.prismaService.customer.create({
         data: { ...data } as Prisma.CustomerCreateInput,
       });
-      // adicionamos este cliente à lista;
+      // we add this customer to the list;
       customers.push(customerCreate);
-      // inserimos a lista no cache.
+      // insert the list into the cache.
       this.cache.set(CustomerCache.name, [...customers]);
 
       return customerCreate;
@@ -55,26 +55,20 @@ export class CustomerCache {
   }
 
   public async find(where: Query) {
-    // Tecuperando a referência da lista de clientes no cache.
+    // Retrieving the client list reference in the cache.
     const customers = this.cache.get<Customer[]>(CustomerCache.name) || [];
-    // Buscando o cliente no cache.
+    // Fetching the client in the cache.
     const customer = customers.find((c) => c[where.field] === where.value);
-    // Não existindo:
+    // Not existing:
     if (!customer || Object.keys(customer).length === 0) {
-      // recuperamos o cliente diretamente do banco;
-      // const customerDb = await this.prismaService.customer.findUnique({
-      //   where: { [where.field]: where.value },
-      // });
       const customerDb = await this.prismaService.customer.findFirst({
         where: { [where.field]: where.value },
       });
       if (customerDb) {
-        // inserimos o cliente no array;
+        // Insert the customer into the array;
         customers.push(customerDb);
-        // reinserimos a lista no cache.
-        this.cache.set(CustomerCache.name, [...customers]);
-        // Zerando lista.
-        customers.length = 0;
+        // We reinsert the list into the cache.
+        this.cache.set(CustomerCache.name, customers);
 
         return customerDb;
       }
@@ -84,13 +78,13 @@ export class CustomerCache {
   }
 
   public async update(update: Query, data: Customer): Promise<Customer> {
-    // Recuperando a referência da lista de clientes no cache.
+    // Retrieving the client list reference from the cache.
     const customers = this.cache.get<Customer[]>(CustomerCache.name);
-    // Buscando cliente na lista.
+    // Looking for customer in the list.
     const customer = customers.find((c) => c[update.field] === update.value);
-    // Recuperando o index do cliente selecionado.
+    // Retrieving the selected client's index.
     const index = customers.indexOf(customer);
-    // Realizando atualização para o cache.
+    // Performing update to cache.
     for (const [key, value] of Object.entries(data)) {
       if (value) {
         // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -98,11 +92,11 @@ export class CustomerCache {
         customer[key] = value;
       }
     }
-    // Reinserindo cliente na lista.
+    // Reinserting client into the list.
     customers[index] = customer;
-    // Reinserindo lista no cache.
+    // Reinserting list into cache.
     this.cache.set(CustomerCache.name, customers);
-    // Atualizando cliente no bando.
+    // Updating client in the flock.
     this.prismaService.customer
       .update({
         where: { [update.field]: update.value },
@@ -117,22 +111,22 @@ export class CustomerCache {
         }),
       );
 
-    // Retornando o cliente atualizado
+    // Returning the updated client
     return customer;
   }
 
   public async remove(del: Query) {
-    // Recuperando o cliente.
+    // Retrieving the client.
     const customer = await this.find({ field: del.field, value: del.value });
-    // Recuperando a referência da lista de clientes no cache.
+    // Retrieving the client list reference from the cache.
     const customers = this.cache.get<Customer[]>(CustomerCache.name);
-    // Recuperando o index do atendente a ser removido.
+    // Retrieving the index of the listener to be removed.
     const index = customers.indexOf(customer);
-    // Atribuindo atendente removido à uma variável e removendo atendente da lista.
+    //Assigning removed attendant to a variable and removing attendant from the list.
     const customertRemoved = customers.splice(index, 1);
-    // Reinserindo lista no cache.
-    this.cache.set(CustomerCache.name, [...customers]);
-    // Retornando cliente removido.
+    // Reinserting list into cache.
+    this.cache.set(CustomerCache.name, customers);
+    // Returning removed client.
     return customertRemoved;
   }
 }
