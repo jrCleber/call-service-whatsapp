@@ -45,37 +45,34 @@ export class Commands {
   }
 
   /**
-   * Comandos do atendente:
-   * ├> &end:
-   * │  ├> finaliza a transação;
-   * │  ├> envia uma mensagem para o cliente informando o encerramento do seu protocolo;
-   * │  ├> libera o usuário para um novo atendimento;
-   * │  └> envia uma mensagem para o atendente informando o encerramento.
+   * Attendant commands:
+   * ├> &end: ends the transaction;
+   * │ ├> sends a message to the client informing the termination of its protocol;
+   * │ ├> releases the user for a new service;
+   * │ └> sends a message to the attendant informing the termination.
    * │
-   * ├> &list:
-   * │   ├> lista todas as transações vinculadas ao usuário  e evia para o atendente no
-   * │   │  formato xlsx.
-   * │   └> &list c=<id>: lista todas as transações de um determindado usuário.
+   * ├> &list: lists all transactions linked to the user and sends them to the attendant in
+   * │ │ xlsx format.
+   * │ └> &list c=<id>: lists all transactions for a given user.
+   * ├> &customer:
+   * │ ├> lists all clients and sends this information in xlsx format;
+   * │ └> &customer c=<id>: retrieves all information for a specific customer.
    * │
-   * ├> &pause: não implementado:
-   * │  └> coloca em espera um determinado atendimento.
+   * ├> &pause: not implemented:
+   * │ └> puts a given call on hold.
    * │
-   * ├> &status: não implementado:
-   * │  └> informa o status de uma determinado atendimento.
-   * │
-   * └> &customer: não implementado;
-   *    ├> buscar as informações de um determindo cliente;
-   *    └> &customer -s<id>: envia uma mensagem para um determindado cliente.
+   * └> &status: not implemented:
+   * └> informs the status of a given service.
    */
 
   public async '&end'(transaction: Transaction): Promise<ResultCommands> {
-    // finalizando a transação
+    // Ending the transaction.
     const transactionFinesher = await this.cacheService.transaction.update(
       { field: 'transactionId', value: transaction.transactionId },
       { status: 'FINISHED', finished: Date.now().toString(), finisher: 'A' },
     );
 
-    // Enviando mensagem para o cliente.
+    // Sending message to the client.
     const customer = await this.cacheService.customer.find({
       field: 'customerId',
       value: transaction.customerId,
@@ -93,13 +90,13 @@ export class Commands {
       },
       { delay: 1200 },
     );
-    // Atualizando estágio do usuário.
+    // Updating user stage.
     this.cacheService.chatStage.update(
       { wuid: customer.wuid },
       { stage: 'finishedChat' },
     );
 
-    // Deletando variáveis do cache.
+    // Deleting variables from cache.
     this.cacheService.customer.remove({
       field: 'customerId',
       value: transaction.customerId,
@@ -110,7 +107,7 @@ export class Commands {
     });
     this.cacheService.chatStage.remove({ wuid: customer.wuid });
 
-    // Enviando mensagem para o atendente.
+    // Sending message to the attendant.
     const attendant = await this.cacheService.attendant.find({
       field: 'attendantId',
       value: transactionFinesher.attendantId,
@@ -122,8 +119,8 @@ export class Commands {
     );
 
     /**
-     * Neste ponto identificamos que o atendente está liberado para um novo atendimento,
-     * portanto buscamos no banco de dados, uma transação pendente no banco.
+     * At this point we identify that the attendant is released for a new service,
+     * so we search the database for a pending transaction in the bank.
      */
     const findTransaction = await this.prismaService.transaction.findFirst({
       where: { sectorId: attendant.companySectorId, status: 'ACTIVE' },
@@ -133,10 +130,10 @@ export class Commands {
 
   public async '&list'(attendant: Attendant, customerId?: number) {
     /**
-     * Recuperando todas as transações.
-     * Note, não é necessário fazer qualquer verificação na variável
-     * customerId, pois caso ela estiver indefinida, recuperaremos todas
-     * as transações do atendente, senão, somente a do cliente definido.
+     * Retrieving all transactions.
+     *Note, it is not necessary to do any checking on the variable
+     * customerId, because if it is undefined, we will retrieve all
+     * the transactions of the attendant, otherwise, only that of the defined customer.
      */
     const transactions = await this.prismaService.transaction.findMany({
       where: { customerId, attendantId: attendant.attendantId },
@@ -167,7 +164,7 @@ export class Commands {
       );
       return;
     }
-    // Formatando dados para a planilha.
+    // Formatting data for the worksheet.
     const formatData: any[] = [];
     transactions.forEach((t) =>
       formatData.push({
@@ -187,7 +184,7 @@ export class Commands {
       }),
     );
     /**
-     * Criando um workbook
+     * Creating a workbook.
      * https://www.npmjs.com/package/xlsx
      */
     const workbook = XLSX.utils.book_new();
@@ -197,13 +194,13 @@ export class Commands {
       Company: 'CodeChat',
       CreatedDate: new Date(),
     };
-    // Criando um workSheets com os dados formatados.
+    // Creating a workSheets with the formatted data.
     const workSheets = XLSX.utils.json_to_sheet(formatData);
-    // Inserindo workSheets em workbook.
+    // Inserting workSheets into workbook.
     XLSX.utils.book_append_sheet(workbook, workSheets, 'transactions');
-    // Convertendo workbook para buffer.
+    // Converting workbook to buffer.
     const xlsxBuffer = XLSX.write(workbook, { type: 'buffer' });
-    // Compondo um nome para o arquivo.
+    // Composing a name for the file.
     const fileName =
       'transactions' +
       `_${Date.now() / 1000}` +
@@ -217,7 +214,7 @@ export class Commands {
     const documentMessage = prepareMedia.documentMessage;
     documentMessage.fileName = fileName;
     documentMessage.mimetype = getMimeType(fileName);
-    // Enviando documento.
+    // Sending document.
     this.sendMessage(attendant.wuid, { documentMessage }, { delay: 1500 }).then(
       (quoted) =>
         this.sendMessage(
@@ -230,5 +227,88 @@ export class Commands {
           { delay: 500, quoted },
         ),
     );
+  }
+
+  public async '&customer'(attendant: Attendant, customerId: number) {
+    if (customerId) {
+      const customer = await this.prismaService.customer.findUnique({
+        where: { customerId },
+      });
+      if (customer) {
+        let imageMessage: proto.IImageMessage;
+        let sendImageMessage: proto.IWebMessageInfo;
+
+        try {
+          // Preparing the media message.
+          const prepareMedia = await prepareWAMessageMedia(
+            { image: { url: customer.profilePictureUrl } },
+            { upload: this.instance.client.waUploadToServer },
+          );
+          // Assigning auxiliary variables.
+          imageMessage = prepareMedia.imageMessage;
+          imageMessage.caption = customer.profilePictureUrl;
+
+          sendImageMessage = await this.sendMessage(
+            attendant.wuid,
+            { imageMessage },
+            { delay: 1000 },
+          );
+        } catch (error) {
+          // no image
+        }
+
+        this.sendMessage(
+          attendant.wuid,
+          {
+            extendedTextMessage: {
+              text: this.formatText(`*Name: ${customer.name}*\n
+              *ID:* ${customer.customerId}
+              *PushName:* ${customer.pushName}
+              *Wuid:* ${customer.wuid}
+              *PhoneNumber:* ${customer.phoneNumber}`),
+            },
+          },
+          { delay: 2000, quoted: sendImageMessage },
+        );
+
+        return;
+      }
+
+      const customers = await this.prismaService.customer.findMany();
+      const workbook = XLSX.utils.book_new();
+      workbook.Props = {
+        Author: 'https://github.com/jrCleber',
+        Title: 'Customers list',
+        Company: 'CodeChat',
+        CreatedDate: new Date(),
+      };
+      const workSheets = XLSX.utils.json_to_sheet(customers);
+      XLSX.utils.book_append_sheet(workbook, workSheets, 'customers');
+      const xlsxBuffer = XLSX.write(workbook, { type: 'buffer' });
+      const fileName =
+        'customers' +
+        `_${Date.now() / 1000}` +
+        `_${attendant.attendantId}` +
+        `_${attendant.shortName.toLowerCase().replace(' ', '_')}` +
+        '.xlsx';
+      const prepareMedia = await prepareWAMessageMedia({ document: xlsxBuffer } as any, {
+        upload: this.instance.client.waUploadToServer,
+      });
+      const documentMessage = prepareMedia.documentMessage;
+      documentMessage.fileName = fileName;
+      documentMessage.mimetype = getMimeType(fileName);
+      this.sendMessage(attendant.wuid, { documentMessage }, { delay: 1500 }).then(
+        (quoted) =>
+          this.sendMessage(
+            attendant.wuid,
+            {
+              extendedTextMessage: {
+                text: `Total de clientes: *${customers.length}*`,
+              },
+            },
+            { delay: 500, quoted },
+          ),
+      );
+    }
   }
 }
