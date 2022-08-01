@@ -1,4 +1,4 @@
-import { CompanySector } from '@prisma/client';
+import { CompanySector, prisma } from '@prisma/client';
 import NodeCache from 'node-cache';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -22,7 +22,14 @@ export class SectorCache {
     // Recuperando todos os setores do cahce.
     let sectors = this.cache.get<CompanySector[]>(SectorCache.name) || [];
     if (sectors.length === 0) {
-      sectors = await this.prismaService.companySector.findMany();
+      // Buscando todos os setores onde existem atendentes vinculados.
+      const findSectors = await this.prismaService.attendant.findMany({
+        distinct: 'companySectorId',
+        select: {
+          CompanySector: true,
+        },
+      });
+      sectors = findSectors.map(({ CompanySector }) => CompanySector);
       this.cache.set(SectorCache.name, [...sectors]);
     }
 

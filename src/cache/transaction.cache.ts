@@ -86,7 +86,7 @@ export class TransactionCache {
     if (!transaction || Object.keys(transaction).length === 0) {
       // buscamos a transação no bando
       const transactionDb = await this.prismaService.transaction.findFirst({
-        where: { [where.field]: where.value },
+        where: { [where.field]: where.value, status: where.status },
         select,
       });
       if (transactionDb) {

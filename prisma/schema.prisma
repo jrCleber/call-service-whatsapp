@@ -80,7 +80,7 @@ model MessageWA {
   header        Json          @db.Json
   body          Json          @db.Json
   sender        Responsible
-  wuid          String        @unique @db.VarChar(150)
+  wuid          String        @db.VarChar(150)
   senderAt      String        @db.VarChar(14)
   Tansaction    Transaction   @relation(fields: [transactionId], references: [transactionId])
   transactionId Int           @db.Int

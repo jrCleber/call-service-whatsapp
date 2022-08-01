@@ -288,7 +288,7 @@ export class ManageService {
           );
           this.cacheService.chatStage.update({ wuid }, { stage: 'checkSector' });
           // Enviando a lista de setores para o cliente.
-          this.sendMessage(
+          await this.sendMessage(
             wuid,
             {
               listMessage: {
@@ -601,6 +601,7 @@ export class ManageService {
     const selectedText = this.selectedText(received.message);
     // Verificando se o cliente deseja cancelar o atendimeto.
     if (selectedText === '-1' || selectedText === '*-1*') {
+      this.logger.log({ transaction });
       // Cancelando o atendimento.
       this.cacheService.transaction.update(
         { field: 'transactionId', value: transaction.transactionId },
@@ -617,13 +618,13 @@ export class ManageService {
         { delay: 1500 },
       );
       // Verificando se existe um atendente vinculado a esse atendimento.
-      if (!attendant || Object?.keys(attendant).length === 0) {
+      if (attendant || Object?.keys(attendant).length > 0) {
         this.sendMessage(attendant.wuid, {
           extendedTextMessage: {
-            text: `*Protocolo: ${transaction.protocol}*
+            text: this.formatText(`*Protocolo: ${transaction.protocol}*
             *Situação:* cancelado pelo cliente;
             *Status:* ${transaction.status}
-            *Data/Hora:* ${formatDate(Date.now().toString())}`,
+            *Data/Hora:* ${formatDate(Date.now().toString())}`),
           },
         });
         // Deletando atendente do cache.
@@ -846,6 +847,7 @@ export class ManageService {
     const transaction = await this.cacheService.transaction.find({
       field: 'attendantId',
       value: attendant?.attendantId,
+      status: 'PROCESSING',
     });
 
     if (!transaction) {
@@ -899,18 +901,49 @@ export class ManageService {
   }
 
   // Checando horário de funcionamento.
-  private checkOperation() {
+  private checkOperation(wuid: string, customerName: string) {
     // Pegando o dia da semana.
     const day = dayjs().day() as Weekday;
     // Pegando a hora atual.
     const hour = dayjs().hour();
     const operation = this.callCenter.operation;
     // Verificando se é um dia de funcionamento.
-    if (!operation.weekday.includes(day)) {
-      return false;
-    }
-    // Verificando o orário do expediente.
-    if (hour < operation.open || hour > operation.closed) {
+    if (
+      operation.weekday.includes(day) ||
+      hour < operation.open ||
+      hour > operation.closed
+    ) {
+      this.sendMessage(
+        wuid,
+        {
+          templateMessage: {
+            hydratedTemplate: {
+              templateId: '01',
+              hydratedTitleText: `Olá ${customerName}, ${timeDay(
+                dayjs().hour(),
+              ).toLowerCase()}😉!`,
+              hydratedContentText:
+                'A nossa equipe 🤝🏼 agradece a sua mensage!\n' +
+                'No momento nós não estamos disponíveis🙂!\n\n' +
+                'Nosso horário de funcionamento é das ' +
+                `*${operation.open}h* às *${operation.closed}h*` +
+                ` ${operation?.desc ? operation.desc : '.'}\n\n` +
+                'Para mais informações, acesse a nossa página!',
+              hydratedFooterText: this.callCenter.botName.toLowerCase(),
+              hydratedButtons: [
+                {
+                  index: 0,
+                  urlButton: {
+                    displayText: this.callCenter.companyName,
+                    url: this.callCenter.url,
+                  },
+                },
+              ],
+            },
+          },
+        },
+        { delay: 2000 },
+      );
       return false;
     }
 
@@ -987,41 +1020,9 @@ export class ManageService {
       // Carregando cliente
       const customer = await this.loadCustomer(received);
       // Verificando expediente
-      if (this.checkOperation() === false) {
-        const operation = this.callCenter.operation;
-        this.sendMessage(
-          wuid,
-          {
-            templateMessage: {
-              hydratedTemplate: {
-                templateId: '01',
-                hydratedTitleText: `Olá ${customer.name}, ${timeDay(
-                  dayjs().hour(),
-                ).toLowerCase()}😉!`,
-                hydratedContentText:
-                  'A nossa equipe 🤝🏼 agradece a sua mensage!\n' +
-                  'No momento nós não estamos disponíveis🙂!\n\n' +
-                  'Nosso horário de funcionamento é das' +
-                  `*${operation.open}h* às *${operation.closed}h*` +
-                  `${operation?.desc ? 'de ' + operation.desc : '.'}\n\n` +
-                  'Para mais informações, acesse a nossa página!',
-                hydratedFooterText: this.callCenter.botName.toLowerCase(),
-                hydratedButtons: [
-                  {
-                    index: 0,
-                    urlButton: {
-                      displayText: this.callCenter.companyName,
-                      url: this.callCenter.url,
-                    },
-                  },
-                ],
-              },
-            },
-          },
-          { delay: 2000 },
-        );
-        return;
-      }
+      // if (this.checkOperation(wuid, customer.name) === false) {
+      //   return;
+      // }
 
       // Verificando usuario e seu estagio
       if (customer) {
@@ -1061,7 +1062,7 @@ export class ManageService {
      * a mensagem no banco de dados associada ao id da transação.
      */
     if (transaction) {
-      //
+      this.saveMessage(transaction, received);
     }
   }
 }

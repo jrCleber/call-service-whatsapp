@@ -180,6 +180,12 @@ export class Commands {
      * https://www.npmjs.com/package/xlsx
      */
     const workbook = XLSX.utils.book_new();
+    workbook.Props = {
+      Author: 'https://github.com/jrCleber',
+      Title: 'Transactions by attendant',
+      Company: 'CodeChat',
+      CreatedDate: new Date(),
+    };
     // Criando um workSheets com os dados formatados.
     const workSheets = XLSX.utils.json_to_sheet(formatData);
     // Inserindo workSheets em workbook.
@@ -188,10 +194,10 @@ export class Commands {
     const xlsxBuffer = XLSX.write(workbook, { type: 'buffer' });
     // Compondo um nome para o arquivo.
     const fileName =
-      'transactions_' +
-      Date.now() +
+      'transactions' +
+      `_${Date.now() / 1000}` +
       `_${attendant.attendantId}` +
-      `_${attendant.shortName.toLowerCase()}` +
+      `_${attendant.shortName.toLowerCase().replace(' ', '_')}` +
       '.xlsx';
     // Preparando documento para o envio.
     const prepareMedia = await prepareWAMessageMedia({ document: xlsxBuffer } as any, {
