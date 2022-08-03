@@ -2,8 +2,9 @@
 
 [![Telegram](https://img.shields.io/badge/Group-Telegram-%2333C1FF)](https://t.me/codechatBR)
 [![Whatsapp](https://img.shields.io/badge/WhatsApp-message-%2322BC18)](https://api.whatsapp.com/send?phone=5531995918699)
-![GitHub](https://img.shields.io/github/license/jrCleber/call-service-whatsapp)
-![npm](https://img.shields.io/badge/npm-8.5.5-lightgrey)
+[![GitHub](https://img.shields.io/badge/license-BSD4Clause-lightgrey)](https://github.com/jrCleber/call-service-whatsapp/blob/main/LICENCE)
+[![yarn](https://img.shields.io/badge/yarn-1.22.15-blue)](https://classic.yarnpkg.com/)
+[![npm](https://img.shields.io/badge/npm-8.16.0-lightgrey)](https://docs.npmjs.com/)
 [![node](https://img.shields.io/badge/node-^16.10.0-%3C873A)](https://nodejs.org/)
 [![nvm](https://img.shields.io/badge/nvm-nodejs-%3C873A)](https://github.com/nvm-sh/nvm#installing-and-updating)
 
