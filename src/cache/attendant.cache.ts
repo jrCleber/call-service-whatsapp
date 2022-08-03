@@ -38,11 +38,10 @@ export class AttendantCache {
   }
 
   private snapshot() {
+    const select = { attendantId: true, wuid: true };
     setInterval(
       async () =>
-        (this.attendants = await this.prismaService.attendant.findMany({
-          select: { attendantId: true, wuid: true },
-        })),
+        (this.attendants = await this.prismaService.attendant.findMany({ select })),
       1000,
     );
   }
@@ -53,15 +52,23 @@ export class AttendantCache {
     // Assigning selected attendant to a variable.
     const attendant = attendants.find((a) => {
       if (where?.sectorId) {
-        return a[where.field] === where.value && a.companySectorId === where.sectorId;
+        return (
+          a[where.field] === where.value &&
+          a.companySectorId === where.sectorId &&
+          a.status === 'ACTIVE'
+        );
       } else {
-        return a[where.field] === where.value;
+        return a[where.field] === where.value && a.status === 'ACTIVE';
       }
     });
     // Checking if the attendant exists.
     if (!attendant) {
       const findAttendant = await this.prismaService.attendant.findFirst({
-        where: { [where.field]: where.value as number, companySectorId: where?.sectorId },
+        where: {
+          [where.field]: where.value as number,
+          companySectorId: where?.sectorId,
+          status: 'ACTIVE',
+        },
       });
       attendants.push(findAttendant);
       this.cache.set(AttendantCache.name, [...attendants]);

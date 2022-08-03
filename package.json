@@ -21,7 +21,7 @@
   },
   "private": true,
   "scripts": {
-    "build": "tsc",
+    "build": "sh ./build.sh",
     "start": "node ./dist/main.js",
     "start:dev": "clear & ts-node --files --transpile-only ./src/main.ts",
     "test": "clear & tsnd --files --transpile-only --respawn --ignore-watch node_modules ./test/test.ts",

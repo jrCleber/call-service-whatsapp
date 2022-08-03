@@ -1,6 +1,7 @@
 # compiled output
 /dist
 /node_modules
+/tsconfig.tsbuildinfo
 
 # Logs
 yarn-error.log*
@@ -19,5 +20,5 @@ yarn.lock
 /instances/*
 !/instances/.gitkeep
 /test/
-conn.yml
+/conn.yml
 .env

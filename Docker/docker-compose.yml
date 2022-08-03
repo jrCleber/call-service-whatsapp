@@ -1,0 +1,36 @@
+version: '3.7'
+
+networks:
+  mysql-net:
+    driver: bridge
+
+services:
+  mysqldb:
+    container_name: mariadb
+    restart: always
+    image: mariadb # mysql
+    command: --default-authentication-plugin=mysql_native_password
+    environment:
+      MYSQL_ROOT_PASSWORD: Ðif©u│┬ip@ssw®®d
+    ports:
+      - 18578:3306
+    volumes:
+      - /data/mysql:/var/lib/mysql
+    networks:
+      - mysql-net
+
+  phpmyadmin:
+    container_name: phpmyadmin
+    restart: always
+    image: phpmyadmin
+    environment:
+      - PMA_HOSTS=mariadb # mysql
+      - PMA_HOST=<ip of the machine where the database is installed>
+      - PMA_PORT=18578
+      - PMA_ARBITRARY=1
+    ports:
+      - 8080:80
+    volumes:
+      - /data/php/admin/uploads.ini:/usr/local/etc/php/conf.d/php-phpmyadmin.ini
+    networks:
+      - mysql-net

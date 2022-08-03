@@ -7,7 +7,7 @@ import { formatDate, timeDay } from '../common/format.date';
 import { Logger } from '../common/logger';
 import { PrismaService } from '../prisma/prisma.service';
 import { CacheService, CallCenterService, Weekday } from '../services/cache.service';
-import { Commands } from './command/commands';
+import { Commands, Flag } from './command/commands';
 import { Instance } from './instance.service';
 
 export type Options = { delay?: number; quoted?: proto.IWebMessageInfo };
@@ -137,6 +137,7 @@ export class ManageService {
         rowId: `${cId}-${tId}-${sector.callCenterId}-${sector.sectorId}`,
       };
     });
+    // return [{ title: 'SECTORS', rows }];
     return [{ title: 'SETORES', rows }];
   }
 
@@ -193,6 +194,7 @@ export class ManageService {
     // Requesting the name.
     await this.sendMessage(
       wuid,
+      // { extendedTextMessage: { text: 'Enter your name now::' } },
       { extendedTextMessage: { text: 'Digite agora o seu nome:' } },
       { delay: 1000 },
     );
@@ -219,6 +221,11 @@ export class ManageService {
         wuid,
         {
           extendedTextMessage: {
+            /*
+            text: this
+              .formatText(`The message you sent to is not valid to be assigned a name.\n
+             Enter your name:`),
+            */
             text: this
               .formatText(`A mensagem que você enviou para não é válida para ser atribuída ao um nome.\n
             Informe o seu nome:`),
@@ -243,13 +250,17 @@ export class ManageService {
       transaction.transactionId;
     // Updating transaction with protocol number.
     this.cacheService.transaction
-      .update({ field: 'transactionId', value: transaction.transactionId }, { protocol })
+      .update(
+        { field: 'transactionId', value: transaction.transactionId, status: 'ACTIVE' },
+        { protocol },
+      )
       .then(({ protocol }) =>
         // Informing the user of the protocol number.
         this.sendMessage(
           wuid,
           {
             extendedTextMessage: {
+              // text: `Great ${name}.\n\nThis is your service protocol: *${protocol}*`,
               text: `Ótimo ${name}.\n\nEsse é o protocolo do seu atendimento: *${protocol}*`,
             },
           },
@@ -267,9 +278,15 @@ export class ManageService {
               wuid,
               {
                 extendedTextMessage: {
+                  /*
+                  text: `${this.formatText(`Inform now the subject of your service.\n
+                  It can be text, or video, or image, etc.
+                  And when you're done, send the word out:\n`)}
+                                  *END*\n`,
+                  */
                   text: `${this.formatText(`Informe agora o assunto do seu atendimento.\n
-                  Pode ser um text, ou vídeo, ou imagem, etc.
-                  E quando vc terminar, envie a palavra:\n`)}
+                  Pode ser um texto, ou vídeo, ou imagem, etc.
+                  E quando você terminar, envie a palavra:\n`)}
                                   *FIM*\n`,
                 },
               },
@@ -291,10 +308,13 @@ export class ManageService {
             wuid,
             {
               listMessage: {
+                // title: '*Which sector do you want to talk to?*\n',
                 title: '*Com qual setor você deseja falar?*\n',
+                // description: 'Click on the button and choose one of the sectors.',
                 description: 'Clique no botão e escolha un dos setores.',
+                // buttonText: 'SECTORS',
                 buttonText: 'SETORES',
-                footerText: this.callCenter.companyName + ' - ' + this.callCenter.url,
+                footerText: this.callCenter.companyName + '\n' + this.callCenter.url,
                 listType: 1,
                 sections,
               },
@@ -375,7 +395,7 @@ export class ManageService {
       this.cacheService.chatStage.update({ wuid }, { stage: 'setSubject' });
       // Updating transaction with sector id.
       await this.cacheService.transaction.update(
-        { field: 'transactionId', value: transaction.transactionId },
+        { field: 'transactionId', value: transaction.transactionId, status: 'ACTIVE' },
         { sectorId },
       );
       // Sending message to the client requesting the subject.
@@ -383,6 +403,12 @@ export class ManageService {
         wuid,
         {
           extendedTextMessage: {
+            /*
+            text: `${this.formatText(`Inform now the subject of your service.\n
+            It can be text, or video, or image, etc.
+            And when you're done, send the word out:\n`)}
+                            *END*\n`,
+            */
             text: `${this.formatText(`Informe agora o assunto do seu atendimento.\n
             Pode ser um text, ou vídeo, ou imagem, etc.
             E quando vc terminar, envie a palavra:\n`)}
@@ -397,9 +423,15 @@ export class ManageService {
         wuid,
         {
           extendedTextMessage: {
+            /*
+            text: this.formatText(
+              `👆🏼👆🏼 There was an error assigning this category!\nPlease try again to enter the category.\n
+              Or type *-1* to cancel the call.`,
+            ),
+            */
             text: this.formatText(
               `👆🏼👆🏼 Houve um erro ao atribuir esta categoria!\nTente novamente informar a categoria.\n
-              Ou digite *-1*, para cancelar o atendimento`,
+              Ou digite *-1*, para cancelar o atendimento.`,
             ),
           },
         },
@@ -433,7 +465,7 @@ export class ManageService {
       }
       // Updating transaction with subject.
       this.cacheService.transaction.update(
-        { field: 'transactionId', value: transaction.transactionId },
+        { field: 'transactionId', value: transaction.transactionId, status: 'ACTIVE' },
         { subject: transaction.subject },
       );
       return;
@@ -448,9 +480,14 @@ export class ManageService {
       wuid,
       {
         extendedTextMessage: {
+          /*
+          text: this
+            .formatText(`Excellent! Please wait a moment!\nSoon you will be attended by our team.\n
+            To cancel the service, at any time, type: *-1*`),
+          */
           text: this
             .formatText(`Ótimo! Aguarde um momento!\nLogo você será atendido pela nossa equipe.\n
-          Para cancelar o atendimento, a qualquer momento, digit: *-1*`),
+            Para cancelar o atendimento, a qualquer momento, digit: *-1*`),
         },
       },
       { delay: 1500 },
@@ -481,6 +518,12 @@ export class ManageService {
       // Assigning auxiliary variables.
       imageMessage = prepareMedia.imageMessage;
       headerType = 4;
+      /*
+      contentText = this.formatText(`*Protocol: ${transaction.protocol}*
+          *Customer:* ${customer.name || customer.pushName}
+          *Customer ID:* ${customer.customerId}
+          *Contact:* ${customer.phoneNumber}`);
+      */
       contentText = this.formatText(`*Protocolo: ${transaction.protocol}*
           *Clente:* ${customer.name || customer.pushName}
           *Id do cliente:* ${customer.customerId}
@@ -488,6 +531,10 @@ export class ManageService {
     } catch (error) {
       // If the preparation causes an error, we ignore the customer's profile image.
       headerType = 2;
+      /*
+      contentText = this.formatText(`*Customer:* ${customer.name || customer.pushName}
+          *Contact:* ${customer.phoneNumber}`);
+      */
       contentText = this.formatText(`*Clente:* ${customer.name || customer.pushName}
           *Contato:* ${customer.phoneNumber}`);
     }
@@ -497,6 +544,7 @@ export class ManageService {
       attendant.wuid,
       {
         extendedTextMessage: {
+          // text: ''⚠️ *ATTENTION* ⚠️\nNew service request.',
           text: '⚠️ *ATEÇÂO* ⚠️\nNova solicitação de atendimento.',
         },
       },
@@ -505,19 +553,23 @@ export class ManageService {
       // Asking the attendant to accept the request.
       this.sendMessage(attendant.wuid, {
         buttonsMessage: {
+          // text: `*Protocol: ${transaction.protocol}*`,
           text: `*Protocolo: ${transaction.protocol}*`,
           contentText,
+          // footerText: `Start: ${formatDate(transaction.initiated)}`,
           footerText: `Início: ${formatDate(transaction.initiated)}`,
           headerType,
           imageMessage,
           buttons: [
             {
               buttonId: 'accept-' + transaction.transactionId.toString(),
+              // buttonText: { displayText: 'Accept Service' },
               buttonText: { displayText: 'Aceitar Atendimento' },
               type: 1,
             },
             {
               buttonId: 'not_accept-' + transaction.transactionId.toString(),
+              // buttonText: { displayText: 'Do not accept' },
               buttonText: { displayText: 'Não aceitar' },
               type: 1,
             },
@@ -619,6 +671,7 @@ export class ManageService {
         wuid,
         {
           extendedTextMessage: {
+            // text: 'All right!\nYour service was successfully completed.',
             text: 'Tudo certo!\nO seu atendimento foi finalizado com sucesso.',
           },
         },
@@ -628,8 +681,14 @@ export class ManageService {
       if (attendant || Object?.keys(attendant).length > 0) {
         this.sendMessage(attendant.wuid, {
           extendedTextMessage: {
+            /*
+              text: this.formatText(`*Protocol: ${transaction.protocol}*
+              *Service status:* canceled by the customer
+              *Status:* FINISHED
+              *Data/Hora:* ${formatDate(Date.now().toString())}`),
+            */
             text: this.formatText(`*Protocolo: ${transaction.protocol}*
-            *Situação:* cancelado pelo cliente;
+            *Situação:* cancelado pelo cliente
             *Status:* FINISHED
             *Data/Hora:* ${formatDate(Date.now().toString())}`),
           },
@@ -661,6 +720,11 @@ export class ManageService {
         wuid,
         {
           extendedTextMessage: {
+            /*
+            text: this
+              .formatText(`Please wait a moment!\nSoon you will be attended by our team.\n
+            To cancel the service, at any time, type: *-1*`),
+            */
             text: this
               .formatText(`Aguarde um momento!\nLogo você será atendido pela nossa equipe.\n
             Para cancelar o atendimento, a qualquer momento, digite: *-1*`),
@@ -690,6 +754,11 @@ export class ManageService {
           attendant.wuid,
           {
             extendedTextMessage: {
+              /*
+                text: this.formatText(`*Protocolo: ${transaction.protocol}*
+                *Customer:* ${customer.name}
+                *Customer ID:* ${customer.customerId}`),
+              */
               text: this.formatText(`*Protocolo: ${transaction.protocol}*
               *Cliente:* ${customer.name}
               *Id do cliente:* ${customer.customerId}`),
@@ -740,17 +809,18 @@ export class ManageService {
           wuid,
           {
             extendedTextMessage: {
+              // text: 'This request has already been answered by another agent.',
               text: 'Esta solicitação já foi atendida por outro atendente',
             },
           },
-          { delay: 1000 },
+          { delay: 1000, quoted: received },
         );
 
         return;
       } else {
         // Updating transaction with the id of the attendant.
         this.cacheService.transaction.update(
-          { field: 'transactionId', value: transaction.transactionId },
+          { field: 'transactionId', value: transaction.transactionId, status: 'ACTIVE' },
           {
             attendantId: attendant.attendantId,
             startProcessing: Date.now().toString(),
@@ -765,6 +835,7 @@ export class ManageService {
           wuid,
           {
             extendedTextMessage: {
+              // text: '*SUBJECT INFORMED BY CUSTOMER*',
               text: '*ASSUNTO INFORMADO PELO CLIENTE*',
             },
           },
@@ -778,6 +849,7 @@ export class ManageService {
           wuid,
           {
             extendedTextMessage: {
+              // text: '*FINALIZATION OF THE SUBJECT*',
               text: '*FINALIZAÇÃO DO ASSUNTO*',
             },
           },
@@ -788,7 +860,8 @@ export class ManageService {
           wuid,
           {
             extendedTextMessage: {
-              text: 'Ótimo!\nAgora, você já pode iniciar o atendimento!',
+              // text: 'Great!\nNow you can start the service.',
+              text: 'Ótimo!\nAgora, você já pode iniciar o atendimento.',
             },
           },
           { delay: 1200 },
@@ -798,6 +871,12 @@ export class ManageService {
           customer.wuid,
           {
             extendedTextMessage: {
+              /*
+              text: this.formatText(
+                `Hello *${customer.name}*! My name is *${attendant.shortName}* and I will attend to you.\n
+                I'm already analyzing your subject, wait for me a moment!`,
+              ),
+              */
               text: this.formatText(
                 `Olá *${customer.name}*! O meu nome é *${attendant.shortName}* e irei realizar o seu atendimento.\n
                 Já estou analizando o seu assunto, me aguarde um momento!`,
@@ -862,6 +941,7 @@ export class ManageService {
         wuid,
         {
           extendedTextMessage: {
+            // text: 'You are not currently involved in a call.\Wait until you are linked to one.',
             text: 'No momento, você não está envolvido nem um atendimento.\nAguarde até ser vinculado a um.',
           },
         },
@@ -928,9 +1008,22 @@ export class ManageService {
           templateMessage: {
             hydratedTemplate: {
               templateId: '01',
+              /*
+              hydratedTitleText: `Helo ${customerName}, ${timeDay(
+                dayjs().hour(),
+              */
               hydratedTitleText: `Olá ${customerName}, ${timeDay(
                 dayjs().hour(),
               ).toLowerCase()}😉!`,
+              /*
+              hydratedContentText:
+                'Our team 🤝🏼 thanks you for your message!\n' +
+                'We are currently unavailable🙂!\n\n' +
+                'Our opening hours are from ' +
+                `*${operation.open}h* to *${operation.closed}h*` +
+                ` ${operation?.desc ? operation.desc : '.'}\n\n` +
+                'For more information, visit our page!',
+              */
               hydratedContentText:
                 'A nossa equipe 🤝🏼 agradece a sua mensage!\n' +
                 'No momento nós não estamos disponíveis🙂!\n\n' +
@@ -989,6 +1082,10 @@ export class ManageService {
           ? Number.parseInt(params[1])
           : undefined;
     }
+    const flag: Flag = {
+      type: textCommand.param1,
+      value: textCommand.param2,
+    };
     // Looking for attendant.
     const attendant = await this.cacheService.attendant.find({
       field: 'wuid',
@@ -1000,7 +1097,24 @@ export class ManageService {
       this.commands.waSendMessage = this.sendMessage;
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
-      this.commands[textCommand.text](attendant, textCommand.param2);
+      const transaction = await this.commands[textCommand.text](attendant, flag);
+      if (transaction.newTransaction) {
+        // Sending the redirected customer to the service queue of the sector.
+        this.manageQueue(transaction);
+      }
+      if (transaction?.releaseTransaction) {
+        const t = transaction?.releaseTransaction as Transaction;
+        const c = await this.cacheService.customer.find({
+          field: 'customerId',
+          value: t.customerId,
+        });
+        const a = await this.cacheService.attendant.find({
+          field: 'attendantId',
+          value: t.attendantId,
+        });
+        // Sending the new service request to the attendant who redirected the transaction.
+        this.serviceRequest(t, c, a);
+      }
       return true;
     }
   }

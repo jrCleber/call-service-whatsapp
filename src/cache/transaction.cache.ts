@@ -76,9 +76,12 @@ export class TransactionCache {
     // Retrieving the transaction array reference from the cache.
     const transactions = this.cache.get<Transaction[]>(TransactionCache.name) || [];
     // Fetching transaction in array.
-    const transaction = transactions.find(
-      (t) => t.status === where.status && t[where.field] === where.value,
-    );
+    const transaction = transactions.find((t) => {
+      if (where?.status) {
+        return t.status === where.status && t[where.field] === where.value;
+      }
+      return t[where.field] === where.value;
+    });
     // Not existing:
     if (!transaction || Object.keys(transaction).length === 0) {
       // we fetch the transaction in the database

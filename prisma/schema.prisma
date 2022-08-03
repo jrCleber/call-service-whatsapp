@@ -84,6 +84,8 @@ model MessageWA {
   senderAt      String        @db.VarChar(14)
   Tansaction    Transaction   @relation(fields: [transactionId], references: [transactionId])
   transactionId Int           @db.Int
+
+  // @@index([wuid])
 }
 
 model Transaction {
