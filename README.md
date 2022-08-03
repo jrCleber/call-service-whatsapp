@@ -98,25 +98,16 @@ There are already ready commands, which you can insert directly into the chat du
     ├> sends a message to the client informing the termination of its protocol;</br>
     ├> releases the user for a new service;</br>
     └> sends a message to the attendant informing the termination.</br>
-</br>
-
   - &list: lists all transactions linked to the user and sends them to the attendant in</br>
     │ xlsx format.</br>
     └> &list c=id: lists all transactions for a given user.</br>
-</br>
-
   - &customer: lists all clients and sends this information in xlsx format.</br>
     ├> &customer c=\[id\]: retrieves all information for a specific customer;</br>
     └> &customer g=\[id\]: retriever a customer and start a call.</br>
-</br>
-
   - &transfer s=\[sector name\]: transfers the customer to the specified sector that</br>
     had attendants.</br>
-</br>
-
   - &pause: not implemented:</br>
     └> puts a given call on hold.</br>
-</br>
   - &status: not implemented:</br>
     └> informs the status of a given service.
 </br>
