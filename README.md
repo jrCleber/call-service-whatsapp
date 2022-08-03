@@ -76,7 +76,7 @@ At the end of the query, run the command:
 ```sh
 $ yarn prisma:generate
 ```
-The generate command generates assets for the Prisma Client based on the data model defined in the [./prism/schema.prisma](https://github.com/jrCleber/call-service-whatsapp/blob/main/prisma/schema.prism) file.
+The generate command generates assets for the Prisma Client based on the data model defined in the [./prism/schema.prisma](https://github.com/jrCleber/call-service-whatsapp/blob/main/prisma/schema.prisma) file.
 
 ### Creating the center and sectors
 To insert the agents in the database, we first need to create the call center and sectors. See the example at [./prisma/create.ts](https://github.com/jrCleber/call-service-whatsapp/blob/main/prisma/create.ts).</br>
