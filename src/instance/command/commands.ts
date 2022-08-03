@@ -617,6 +617,8 @@ export class Commands {
 
   public async '&transfer'(attendant: Attendant, flag: Flag) {
     if (flag?.type && flag?.value) {
+      this.transferCommands.instance = this.instance;
+      this.transferCommands.sendMessage = this.sendMessage;
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
       return this.transferCommands[flag.type](attendant, flag.value);
