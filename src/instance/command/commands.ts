@@ -181,12 +181,8 @@ class CustomerCommands {
 }
 
 class TransferCommands {
-  constructor(
-    private readonly prismaService: PrismaService,
-    private readonly cacheService: CacheService,
-  ) {
-    //
-  }
+  // eslint-disable-next-line prettier/prettier
+  constructor(private readonly cacheService: CacheService) { }
 
   public sendMessage: (
     wuid: string,
@@ -202,7 +198,7 @@ class TransferCommands {
 
   public async s(attendant: Attendant, flag: Flag) {
     const sectors = await this.cacheService.sector.findMany();
-    const sector = sectors.find((s) => s.sector === flag?.value);
+    const sector = sectors.find((s) => s.sector === flag?.value.toString());
     // Verificando se o setor informado existe.
     if (!sector || Object.keys(sector).length === 0) {
       this.sendMessage(
@@ -356,6 +352,7 @@ export class Commands {
     this.prismaService,
     this.cacheService,
   );
+  private readonly transferCommands = new TransferCommands(this.cacheService);
 
   /**
    * Attendant commands:
@@ -616,5 +613,24 @@ export class Commands {
       field: 'attendantId',
       value: attendant.attendantId,
     });
+  }
+
+  public async '&transfer'(attendant: Attendant, flag: Flag) {
+    if (flag?.type && flag?.value) {
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      return this.transferCommands[flag.type](attendant, flag.value);
+    }
+
+    this.sendMessage(
+      attendant.wuid,
+      {
+        extendedTextMessage: {
+          // text: 'The command typed is not recognized.',
+          text: 'O comando digitado não é reconhecido.',
+        },
+      },
+      { delay: 1200 },
+    );
   }
 }
