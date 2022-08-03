@@ -117,7 +117,7 @@ There are already ready commands, which you can insert directly into the chat du
     └> informs the status of a given service.
 </br>
 
-Commands can be created and edited at [./src/instance/command/commands.ts](https://github.com/jrCleber/call-service-whatsapp/blob/main/src/instance/command/commands.ts).
+Commands can be created and edited at [commands.ts](https://github.com/jrCleber/call-service-whatsapp/blob/main/src/instance/command/commands.ts).
 
 <hr>
 
