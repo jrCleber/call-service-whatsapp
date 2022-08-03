@@ -99,7 +99,7 @@ There are already ready commands, which you can insert directly into the chat du
     ├> releases the user for a new service;</br>
     └> sends a message to the attendant informing the termination.</br>
   - &list: lists all transactions linked to the user and sends them to the attendant in</br>
-    │ xlsx format.</br>
+    │      xlsx format.</br>
     └> &list c=id: lists all transactions for a given user.</br>
   - &customer: lists all clients and sends this information in xlsx format.</br>
     ├> &customer c=\[id\]: retrieves all information for a specific customer;</br>
