@@ -8,6 +8,9 @@ $ sudo mkdir -p /data/mysql
 
 # configuration folder
 $ sudo mkdir -p /data/php/admin
+
+# uploads.in
+$ sodo nano /data/php/admin/uploads.ini
 ```
 Copy and paste the settings from the [uploads.ini](https://github.com/jrCleber/call-service-whatsapp/blob/main/Docker/uploads.ini) file and give the command:
  - Ctrl o: to save the file.
