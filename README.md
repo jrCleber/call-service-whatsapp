@@ -56,7 +56,7 @@ $ npm i
 The application depends on a MySql/MariaDB database.</br>
 If you don't have one:
   - navigate to the [Docker folder](https://github.com/jrCleber/call-service-whatsapp/tree/main/Docker):
-##### Docker
+#### Docker
 ```sh
 $ cd Docker
 $ docker-compose up
