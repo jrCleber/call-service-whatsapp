@@ -1,6 +1,6 @@
-import { delay, prepareWAMessageMedia, proto } from '@adiwajshing/baileys';
-import { Attendant, CallCenter, Prisma } from '@prisma/client';
+import { Attendant, Prisma } from '@prisma/client';
 import dayjs from 'dayjs';
+import { delay, prepareWAMessageMedia, proto } from '../Baileys/src';
 import { Customer } from '../cache/customer.cache';
 import { Transaction } from '../cache/transaction.cache';
 import { formatDate, timeDay } from '../common/format.date';
@@ -74,8 +74,8 @@ export class ManageService {
   }
 
   private selectedText(message: proto.IMessage) {
-    if (message?.conversation) return message.conversation;
-    if (message?.extendedTextMessage) return message.extendedTextMessage.text;
+    if (message?.conversation) return message.conversation.trim();
+    if (message?.extendedTextMessage) return message.extendedTextMessage.text.trim();
     return;
   }
 
@@ -128,9 +128,12 @@ export class ManageService {
    * @param tId -> transactionId
    * @param cId -> customerId
    */
-  private async createList(tId: number, cId: number): Promise<proto.ISection[]> {
+  private async createList(
+    tId: number,
+    cId: number,
+  ): Promise<proto.Message.ListMessage.ISection[]> {
     const sectors = await this.cacheService.sector.findMany();
-    const rows: proto.IRow[] = Array.from(sectors, (sector) => {
+    const rows: proto.Message.ListMessage.IRow[] = Array.from(sectors, (sector) => {
       return {
         title: sector.sector.toUpperCase(),
         description: ' ',
@@ -506,7 +509,7 @@ export class ManageService {
      * At this point, we will start assigning the customer profile image:
      */
     // Declaring auxiliary variables.
-    let imageMessage: proto.IImageMessage;
+    let imageMessage: proto.Message.IImageMessage;
     let contentText: string;
     let headerType: number;
     try {
@@ -595,7 +598,6 @@ export class ManageService {
       },
       select: { attendantId: true },
     });
-    this.logger.log({ MQ_T: transactions });
     // Declaring variable that will store the available attendant.
     let releaseAttendant: Attendant;
     // If all the agents in the sector are available, we assign the first one.
@@ -603,7 +605,6 @@ export class ManageService {
       releaseAttendant = await this.cacheService.attendant.realise({
         where: { companySectorId: transaction.sectorId },
       });
-      this.logger.log({ if: releaseAttendant });
     } else {
       // retrieving attendants in attendance.
       const inAttendance: number[] = [];
@@ -621,7 +622,6 @@ export class ManageService {
           companySectorId: transaction.sectorId,
         },
       });
-      this.logger.log({ else: releaseAttendant });
     }
 
     // Fetching the user related to the transaction.
@@ -649,23 +649,22 @@ export class ManageService {
     const transaction = await this.cacheService.transaction.find({
       field: 'customerId',
       value: id,
-      status: 'PROCESSING',
     });
     // Looking for attendant.
     const attendant = await this.cacheService.attendant.find({
       field: 'attendantId',
-      value: transaction.attendantId,
+      value: transaction?.attendantId,
     });
     // Selecting the text of text messages.
     const selectedText = this.selectedText(received.message);
     // Checking if the customer wants to cancel the service.
     if (selectedText === '-1' || selectedText === '*-1*') {
-      this.logger.log({ transaction });
       // Canceling the call.
       this.cacheService.transaction.update(
         { field: 'transactionId', value: transaction.transactionId },
         { finished: Date.now().toString(), finisher: 'C', status: 'FINISHED' },
       );
+      this.cacheService.chatStage.update({ wuid }, { stage: 'finishedChat' });
       // Sending a message to the customer that their service has ended.
       this.sendMessage(
         wuid,
@@ -678,7 +677,7 @@ export class ManageService {
         { delay: 1500 },
       );
       // Checking if there is an attendant linked to this call.
-      if (attendant || Object?.keys(attendant).length > 0) {
+      if (attendant && Object.keys(attendant).length > 0) {
         this.sendMessage(attendant.wuid, {
           extendedTextMessage: {
             /*
@@ -1098,7 +1097,7 @@ export class ManageService {
       // eslint-disable-next-line @typescript-eslint/ban-ts-comment
       // @ts-ignore
       const transaction = await this.commands[textCommand.text](attendant, flag);
-      if (transaction.newTransaction) {
+      if (transaction?.newTransaction) {
         // Sending the redirected customer to the service queue of the sector.
         this.manageQueue(transaction);
       }

@@ -1,4 +1,3 @@
-import { prepareWAMessageMedia, proto } from '@adiwajshing/baileys';
 import { Attendant } from '../../cache/attendant.cache';
 import { Transaction } from '../../cache/transaction.cache';
 import { formatDate, timeDay } from '../../common/format.date';
@@ -10,6 +9,7 @@ import { getMimeType } from '../../utils/mimetype/utils';
 import { Instance } from '../instance.service';
 import { Logger } from '../../common/logger';
 import dayjs from 'dayjs';
+import { prepareWAMessageMedia, proto } from '../../Baileys/src';
 
 type ResultCommands = 'finished' | 'list' | 'status' | Transaction;
 
@@ -50,7 +50,7 @@ class CustomerCommands {
         { delay: 1500 },
       );
     } else {
-      let imageMessage: proto.IImageMessage;
+      let imageMessage: proto.Message.IImageMessage;
       let sendImageMessage: proto.IWebMessageInfo;
 
       try {

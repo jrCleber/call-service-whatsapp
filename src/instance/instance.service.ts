@@ -1,16 +1,3 @@
-import makeWASocket, {
-  AuthenticationState,
-  BaileysEventEmitter,
-  DisconnectReason,
-  fetchLatestBaileysVersion,
-  isJidGroup,
-  proto,
-  useMultiFileAuthState,
-  UserFacingSocketConfig,
-  WABrowserDescription,
-  WAConnectionState,
-  WASocket,
-} from '@adiwajshing/baileys';
 import { ConfigService } from '../services/config.service';
 import { PrismaService } from '../prisma/prisma.service';
 import EventEmitter2 from 'eventemitter2';
@@ -23,6 +10,19 @@ import { Browser, QrCode } from '../common/yaml.load';
 import { messageProcessing } from '../common/message.filter';
 import { INSTANCE_DIR } from '../config/path.config';
 import { Logger } from '../common/logger';
+import makeWASocket, {
+  AuthenticationState,
+  DisconnectReason,
+  WABrowserDescription,
+  WAConnectionState,
+  WASocket,
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion,
+  UserFacingSocketConfig,
+  proto,
+  BaileysEventEmitter,
+  isJidGroup,
+} from '../Baileys/src';
 
 export type Instance = {
   instanceKey?: string;
