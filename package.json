@@ -30,17 +30,21 @@
     "prisma:stuidio": "nps prisma studio"
   },
   "dependencies": {
-    "@adiwajshing/baileys": "^4.3.0",
     "@hapi/boom": "^10.0.0",
     "@prisma/client": "^4.1.1",
+    "axios": "^0.27.2",
     "cors": "^2.8.5",
     "dayjs": "^1.11.4",
     "eventemitter2": "^6.4.6",
+    "futoin-hkdf": "^1.5.1",
     "js-yaml": "^4.1.0",
+    "libsignal": "^2.0.1",
     "node-cache": "^5.1.2",
     "path": "^0.12.7",
     "pino": "^8.3.0",
+    "protobufjs": "^7.0.0",
     "qrcode-terminal": "^0.12.0",
+    "ws": "^8.8.1",
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
