@@ -47,36 +47,38 @@ export class AttendantCache {
   }
 
   public async find(where: Query) {
-    // Retrieving the list of listeners reference from the cache.
-    const attendants = this.cache.get<Attendant[]>(AttendantCache.name) || [];
-    // Assigning selected attendant to a variable.
-    const attendant = attendants.find((a) => {
-      if (where?.sectorId) {
-        return (
-          a[where.field] === where.value &&
-          a.companySectorId === where.sectorId &&
-          a.status === 'ACTIVE'
-        );
-      } else {
-        return a[where.field] === where.value && a.status === 'ACTIVE';
-      }
-    });
-    // Checking if the attendant exists.
-    if (!attendant) {
-      const findAttendant = await this.prismaService.attendant.findFirst({
-        where: {
-          [where.field]: where.value as number,
-          companySectorId: where?.sectorId,
-          status: 'ACTIVE',
-        },
+    if (where?.value) {
+      // Retrieving the list of listeners reference from the cache.
+      const attendants = this.cache.get<Attendant[]>(AttendantCache.name) || [];
+      // Assigning selected attendant to a variable.
+      const attendant = attendants.find((a) => {
+        if (where?.sectorId) {
+          return (
+            a[where.field] === where.value &&
+            a.companySectorId === where.sectorId &&
+            a.status === 'ACTIVE'
+          );
+        } else {
+          return a[where.field] === where.value && a.status === 'ACTIVE';
+        }
       });
-      attendants.push(findAttendant);
-      this.cache.set(AttendantCache.name, [...attendants]);
-      return findAttendant;
-    }
+      // Checking if the attendant exists.
+      if (!attendant || Object.keys(attendant).length === 0) {
+        const findAttendant = await this.prismaService.attendant.findFirst({
+          where: {
+            [where.field]: where.value as number,
+            companySectorId: where?.sectorId,
+            status: 'ACTIVE',
+          },
+        });
+        attendants.push(findAttendant);
+        this.cache.set(AttendantCache.name, [...attendants]);
+        return findAttendant;
+      }
 
-    // Returning selected attendant.
-    return attendant;
+      // Returning selected attendant.
+      return attendant;
+    }
   }
 
   // Searching the database for the available attendant.
