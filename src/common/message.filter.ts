@@ -1,4 +1,4 @@
-import { proto } from '@adiwajshing/baileys';
+import { proto } from '../Baileys/src';
 
 type Args = { received: proto.IWebMessageInfo; exclude: string[] };
 
